@@ -77,3 +77,11 @@ panel space is exhausted; the ticker gets a chevron affordance.
 Energy-conserving reactions change kinetics constants; any v1 test that hard-coded those
 (e.g. bathEnergy calibration) gets updated in the same slice with the reason in the test body.
 Contract tests (valence, cap, persistence, noble inertness) must keep passing unmodified.
+
+## J13 — Validation probe gains `__pulse.step(frames)` (time acceleration)
+The preview tab suspends requestAnimationFrame entirely when hidden, so timed live
+scenarios (settle 60 s, heat 30 s…) cannot advance wall-clock style unless the panel is
+visible. The probe now exposes a synchronous `step(frames)` that advances the sim through
+the exact same `step()` path the render loop uses — time control, not state mutation, so
+harness fidelity is preserved (all controls are still driven through real UI events).
+Capped at 36 000 frames/call. The app itself still pauses when hidden (battery-friendly).

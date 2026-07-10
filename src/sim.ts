@@ -265,10 +265,11 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     },
 
     // Inject up to `count` atoms near (x,y); returns how many actually spawned (cap-guarded).
-    burst(x: number, y: number, count = 30): number {
+    // `element` overrides the sampler — the injector feature (J9) drops a pure element.
+    burst(x: number, y: number, count = 30, element?: ChemElement): number {
       let added = 0;
       while (added < count && atoms.length < sim.cap) {
-        const atom = makeAtom(sampleElement(), x + (rng() - 0.5) * 30, y + (rng() - 0.5) * 30, true);
+        const atom = makeAtom(element ?? sampleElement(), x + (rng() - 0.5) * 30, y + (rng() - 0.5) * 30, true);
         const ang = rng() * Math.PI * 2, sp = 2 + rng() * 4;
         atom.vx = Math.cos(ang) * sp; atom.vy = Math.sin(ang) * sp;
         atoms.push(atom);

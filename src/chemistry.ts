@@ -234,6 +234,19 @@ export const PRESETS: Preset[] = [
     id: 'seawater', name: 'Seawater',
     mix: { H: 66.2, O: 33.1, Cl: 0.3, Na: 0.25, Mg: 0.05, S: 0.05, Ca: 0.025, K: 0.025 },
   },
+  // --- reactive playgrounds (J8): chosen to demo bonding, not to mirror nature ---
+  {
+    id: 'salt', name: 'Salt flats',
+    mix: { Na: 50, Cl: 50 },
+  },
+  {
+    id: 'burn', name: 'Combustion chamber',
+    mix: { H: 55, O: 30, C: 15 },
+  },
+  {
+    id: 'soup', name: 'Primordial soup',
+    mix: { H: 55, C: 15, O: 15, N: 12, S: 2, P: 1 },
+  },
 ];
 
 export const PRESET_BY_ID: Record<string, Preset> = Object.fromEntries(PRESETS.map(p => [p.id, p]));

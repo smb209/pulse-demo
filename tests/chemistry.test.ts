@@ -171,10 +171,10 @@ test('bond orders: N2 triple, O2 double, default single', () => {
 
 // --- presets ---------------------------------------------------------------
 
-test('five presets, all mixes sum to ~100%, all symbols real', () => {
-  assert.equal(PRESETS.length, 5);
+test('eight presets (5 natural + 3 reactive), all mixes sum to ~100%, all symbols real', () => {
+  assert.equal(PRESETS.length, 8);
   const ids = PRESETS.map(p => p.id);
-  assert.deepEqual(ids, ['atmosphere', 'sun', 'earth', 'body', 'seawater']);
+  assert.deepEqual(ids, ['atmosphere', 'sun', 'earth', 'body', 'seawater', 'salt', 'burn', 'soup']);
   for (const p of PRESETS) {
     const sum = Object.values(p.mix).reduce((s, w) => s + w, 0);
     assert.ok(Math.abs(sum - 100) <= 0.5, `${p.id} sums to ${sum}`);

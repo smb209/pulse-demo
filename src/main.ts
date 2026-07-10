@@ -6,7 +6,7 @@ import { PRESET_BY_ID, samplePreset, analyzeMolecules, type MoleculeReport } fro
 import { createSim, drawRadius } from './sim';
 
 declare global {
-  interface Window { __pulse: { stats: () => object } }
+  interface Window { __pulse: { stats: () => object; step: (frames?: number) => number } }
 }
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -16,7 +16,9 @@ let W = window.innerWidth, H = window.innerHeight;
 let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
 let currentPreset = 'atmosphere';
+let injectSymbol: string | null = null; // null = preset-weighted mix (J9)
 const sampleElement = () => samplePreset(currentPreset);
+const injectElement = () => (injectSymbol ? BY_SYMBOL[injectSymbol] : undefined);
 
 const sim = createSim({
   width: W, height: H,
@@ -95,7 +97,7 @@ window.addEventListener('pointermove', setPointer);
 window.addEventListener('pointerdown', e => {
   if ((e.target as Element).closest('#panel')) return;
   setPointer(e);
-  if (sim.burst(e.clientX, e.clientY, 30) === 0) flashAtCap();
+  if (sim.burst(e.clientX, e.clientY, 30, injectElement()) === 0) flashAtCap();
 });
 window.addEventListener('pointerleave', () => sim.setPointer({ active: false }));
 window.addEventListener('touchmove', e => {
@@ -159,7 +161,36 @@ tempIn.addEventListener('input', () => {
   sim.setTemperature(t);
 });
 document.getElementById('burstBtn')!.addEventListener('click', () => {
-  if (sim.burst(W / 2, H / 2, 30) === 0) flashAtCap();
+  if (sim.burst(W / 2, H / 2, 30, injectElement()) === 0) flashAtCap();
+});
+
+// --- injector chips (J9) ------------------------------------------------------
+
+document.getElementById('inject')!.addEventListener('click', e => {
+  const btn = (e.target as Element).closest('button');
+  if (!btn) return;
+  injectSymbol = btn.dataset.inject === 'mix' ? null : btn.dataset.inject!;
+  document.querySelectorAll('#inject button').forEach(b => b.classList.toggle('active', b === btn));
+});
+
+// --- reset (J10): control baseline + respawn, preset stays -----------------------
+
+function setActive(groupId: string, match: (b: HTMLButtonElement) => boolean): void {
+  document.querySelectorAll<HTMLButtonElement>(`#${groupId} button`).forEach(b => b.classList.toggle('active', match(b)));
+}
+
+document.getElementById('resetBtn')!.addEventListener('click', () => {
+  capIn.value = '250';
+  document.getElementById('capOut')!.textContent = '250';
+  sim.setCap(250);
+  tempIn.value = '40';
+  document.getElementById('tempOut')!.textContent = '40';
+  sim.setTemperature(40);
+  sim.setPointer({ mode: 'attract', active: false });
+  setActive('modes', b => b.dataset.mode === 'attract');
+  injectSymbol = null;
+  setActive('inject', b => b.dataset.inject === 'mix');
+  sim.respawn();
 });
 
 // --- render loop -------------------------------------------------------------
@@ -253,5 +284,13 @@ function renderTicker({ molecules }: MoleculeReport): void {
 // --- validation probe (read-only) — build plan D7 -----------------------------
 
 window.__pulse = {
-  stats: () => ({ ...sim.stats(), fps, preset: currentPreset, ...analyzeMolecules(sim.bonds) }),
+  stats: () => ({ ...sim.stats(), fps, preset: currentPreset, inject: injectSymbol ?? 'mix', ...analyzeMolecules(sim.bonds) }),
+  // Time acceleration for validation (J13): synchronously advance N sim frames through
+  // the normal step path. Hidden tabs suspend rAF entirely, so timed scenarios drive
+  // the clock with this instead of waiting. Capped to keep any single call bounded.
+  step: (frames = 60) => {
+    const n = Math.min(Math.max(1, frames | 0), 36000);
+    for (let i = 0; i < n; i++) sim.step();
+    return n;
+  },
 };
