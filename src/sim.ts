@@ -3,7 +3,7 @@
 // Chemistry (affinity, energy gates) lives in chemistry.ts; this file owns kinetics:
 // which pairs meet, how much relative kinetic energy they carry, springs, cooldowns.
 
-import { affinity, bondFormProbability, bondBreakProbability, bondEnergy, maxBondOrder, pairKey, type Rng } from './chemistry';
+import { affinity, bondFormProbability, bondBreakProbability, bondEnergy, maxBondOrder, pairKey, cleaveCharges, neutralizeOnBond, type Rng } from './chemistry';
 import type { ChemElement } from './elements';
 
 export interface Atom {
@@ -11,6 +11,7 @@ export interface Atom {
   el: ChemElement;
   x: number; y: number;
   vx: number; vy: number;
+  charge: number;
   bonds: Bond[];
 }
 
@@ -37,6 +38,8 @@ export interface SimStats {
   overloaded: number;
   cap: number;
   temperature: number;
+  ions: { positive: number; negative: number; net: number };
+  meanSpeed: number;
 }
 
 export interface SimOptions {
@@ -78,8 +81,54 @@ const BREAK_RATE = 0.18;   // per-frame scale on P(break) per bond
 const SPRING_K = 0.045;
 const BOND_DAMP = 0.92;    // damping of relative velocity along a bond axis
 const REBOND_COOLDOWN = 120; // frames a broken pair cannot re-form
-const BREAK_IMPULSE = 0.6;
 const ATTRACT_K = 0.055;   // strength of the affinity-scaled pair attraction
+
+// --- energy-conserving reactions (J6) --------------------------------------
+// Formation is exothermic: EXO_FRACTION of the bond energy becomes fragment kinetic
+// energy; breaking is endothermic: the bond energy is consumed from the pair's relative
+// kinetic energy. Both exchanges conserve momentum (impulse J on one atom, −J on the
+// other → Δv ∝ 1/mass). REACTION_VCAP bounds any single event's Δv for integrator
+// stability; values calibrated headless 2026-07-10 (burn-mix ignites at T=40, seawater
+// at T=40 stays in the v1 regime).
+export const EXO_FRACTION = 0.25;
+const REACTION_VCAP = 2.5;
+
+const COULOMB_K = 220;      // ion-ion force constant (softened inverse-square)
+const COULOMB_RANGE = 240;  // px — ions feel each other much further than neutrals
+
+type Kinetic = { el: ChemElement; vx: number; vy: number };
+
+function reducedMass(a: Kinetic, b: Kinetic): number {
+  return (a.el.mass * b.el.mass) / (a.el.mass + b.el.mass);
+}
+
+// Exothermic release: give the pair extra relative speed Δv (random direction),
+// split so that momentum is conserved: Δva·ma = −Δvb·mb.
+export function applyFormationEnergetics(a: Kinetic, b: Kinetic, eBondKj: number, rng: Rng): void {
+  const mu = reducedMass(a, b);
+  const eSim = (eBondKj / ENERGY_SCALE) * EXO_FRACTION;
+  const dv = Math.min(Math.sqrt(2 * eSim / mu), REACTION_VCAP);
+  const ang = rng() * Math.PI * 2;
+  const jx = Math.cos(ang) * dv * mu, jy = Math.sin(ang) * dv * mu; // impulse vector
+  a.vx += jx / a.el.mass; a.vy += jy / a.el.mass;
+  b.vx -= jx / b.el.mass; b.vy -= jy / b.el.mass;
+}
+
+// Endothermic break: remove up to the bond energy from the pair's relative kinetic
+// energy by scaling relative velocity down (never below zero), momentum-conserving.
+export function applyBreakEnergetics(a: Kinetic, b: Kinetic, eBondKj: number): void {
+  const mu = reducedMass(a, b);
+  const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
+  const eRelSim = 0.5 * mu * (dvx * dvx + dvy * dvy);
+  const eCost = eBondKj / ENERGY_SCALE;
+  if (eRelSim <= 1e-9) return;
+  const scale = Math.sqrt(Math.max(0, eRelSim - eCost) / eRelSim);
+  // change in relative velocity: Δ(dv) = (scale−1)·dv, applied as ±J/m
+  const ddvx = (scale - 1) * dvx, ddvy = (scale - 1) * dvy;
+  const jx = ddvx * mu, jy = ddvy * mu;
+  b.vx += jx / b.el.mass; b.vy += jy / b.el.mass;
+  a.vx -= jx / a.el.mass; a.vy -= jy / a.el.mass;
+}
 
 // element-pair affinity cache (82×82 worst case, filled lazily)
 const affinityCache = new Map<string, number>();
@@ -130,6 +179,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
       y: y ?? rng() * H,
       vx: Math.cos(a) * s,
       vy: Math.sin(a) * s,
+      charge: 0,
       bonds: [],
     };
   }
@@ -140,17 +190,19 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     return atoms.length;
   }
 
-  function removeBond(bd: Bond, impulse = false): void {
+  // `reaction: true` = a real dissociation event (endothermic energetics + possible
+  // heterolytic ionization). `false` = bookkeeping removal (cap trim) — no physics.
+  function removeBond(bd: Bond, reaction = false): void {
     const idx = bonds.indexOf(bd);
     if (idx !== -1) bonds.splice(idx, 1);
     bd.a.bonds = bd.a.bonds.filter(x => x !== bd);
     bd.b.bonds = bd.b.bonds.filter(x => x !== bd);
     cooldowns.set(coolKey(bd.a, bd.b), frame + REBOND_COOLDOWN);
-    if (impulse) {
-      const dx = bd.b.x - bd.a.x, dy = bd.b.y - bd.a.y;
-      const d = Math.hypot(dx, dy) || 1;
-      bd.a.vx -= (dx / d) * BREAK_IMPULSE; bd.a.vy -= (dy / d) * BREAK_IMPULSE;
-      bd.b.vx += (dx / d) * BREAK_IMPULSE; bd.b.vy += (dy / d) * BREAK_IMPULSE;
+    if (reaction) {
+      applyBreakEnergetics(bd.a, bd.b, bondEnergy(bd.a.el, bd.b.el, bd.order));
+      const [qa, qb] = cleaveCharges(bd.a.el, bd.b.el, bd.a.charge, bd.b.charge);
+      bd.a.charge = qa;
+      bd.b.charge = qb;
     }
   }
 
@@ -175,13 +227,16 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     if (a.bonds.some(bd => bd.a === b || bd.b === b)) return; // already bonded
     const e = eRel(a, b);
     const order = Math.min(maxBondOrder(a.el, b.el), capLeft(a), capLeft(b));
-    const p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b))
-      * captureFactor(e, bondEnergy(a.el, b.el, order)) * FORM_RATE;
+    const eBond = bondEnergy(a.el, b.el, order);
+    const p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b), a.charge, b.charge)
+      * captureFactor(e, eBond) * FORM_RATE;
     if (p > 0 && rng() < p) {
       const bd: Bond = { a, b, order, key: pairKey(a.el, b.el) };
       bonds.push(bd);
       a.bonds.push(bd);
       b.bonds.push(bd);
+      [a.charge, b.charge] = neutralizeOnBond(a.charge, b.charge);
+      applyFormationEnergetics(a, b, eBond, rng); // exothermic — this is what ignites chains
     }
   }
 
@@ -282,6 +337,25 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         if (p > 0 && rng() < p) removeBond(bd, true);
       }
 
+      // Coulomb forces among ions (J7): few atoms carry charge, so collect then O(k²).
+      // Softened inverse-square; opposite charges attract, like charges repel.
+      const ions = atoms.filter(p => p.charge !== 0);
+      for (let i = 0; i < ions.length; i++) {
+        const a = ions[i];
+        for (let j = i + 1; j < ions.length; j++) {
+          const b = ions[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > COULOMB_RANGE * COULOMB_RANGE || d2 < 1) continue;
+          const d = Math.sqrt(d2);
+          // positive f = repulsion (like charges), negative = attraction
+          const f = COULOMB_K * a.charge * b.charge / Math.max(d2, 100) * dt;
+          const ux = dx / d, uy = dy / d;
+          a.vx -= ux * f / (a.el.mass / 16); a.vy -= uy * f / (a.el.mass / 16);
+          b.vx += ux * f / (b.el.mass / 16); b.vy += uy * f / (b.el.mass / 16);
+        }
+      }
+
       // pair scan: weak affinity-scaled attraction (electrostatic flavor — this is how
       // partners find each other) + bond formation inside capture radius. O(n²), cheap rejects.
       const MAXR = 60;
@@ -318,15 +392,21 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
       const byElement: Record<string, number> = {};
       for (const p of atoms) byElement[p.el.symbol] = (byElement[p.el.symbol] ?? 0) + 1;
       const byBondPair: Record<string, number> = {};
-      let maxLoadRatio = 0, overloaded = 0;
+      let maxLoadRatio = 0, overloaded = 0, positive = 0, negative = 0, net = 0, speedSum = 0;
       for (const bd of bonds) byBondPair[bd.key] = (byBondPair[bd.key] ?? 0) + 1;
       for (const p of atoms) {
         if (p.el.maxBonds > 0) maxLoadRatio = Math.max(maxLoadRatio, bondLoad(p) / p.el.maxBonds);
         if (bondLoad(p) > p.el.maxBonds) overloaded++;
+        if (p.charge > 0) positive++;
+        if (p.charge < 0) negative++;
+        net += p.charge;
+        speedSum += Math.hypot(p.vx, p.vy);
       }
       return {
         atoms: atoms.length, bonds: bonds.length, byElement, byBondPair,
         maxLoadRatio, overloaded, cap: sim.cap, temperature: sim.temperature,
+        ions: { positive, negative, net },
+        meanSpeed: atoms.length ? speedSum / atoms.length : 0,
       };
     },
   };

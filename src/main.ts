@@ -201,6 +201,24 @@ function frame(now: number): void {
     ctx.drawImage(s.canvas, p.x - s.half, p.y - s.half, s.half * 2, s.half * 2);
   }
 
+  // ion badges: ring + sign, drawn per frame (ions are few)
+  ctx.lineWidth = 1.3;
+  ctx.font = '700 8px -apple-system, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const p of sim.atoms) {
+    if (p.charge === 0) continue;
+    const r = drawRadius(p.el);
+    const color = p.charge > 0 ? '#EEA02B' : '#44D4E4';
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 2.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = color;
+    const sign = p.charge > 0 ? '+' : '−';
+    ctx.fillText(Math.abs(p.charge) > 1 ? sign + Math.abs(p.charge) : sign, p.x + r + 4.5, p.y - r - 2);
+  }
+
   frames++;
   if (now - fpsTimer >= 500) {
     fps = Math.round(frames * 1000 / (now - fpsTimer));

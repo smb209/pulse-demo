@@ -81,11 +81,53 @@ export const ACTIVATION_ENERGY = 40; // kJ/mol — approach energy needed to rea
 
 // P(form) per candidate encounter. eRel = relative kinetic energy of the pair, kJ/mol scale.
 // Monotone increasing in eRel; 0 for incompatible pairs or exhausted valence.
-export function bondFormProbability(a: ChemElement, b: ChemElement, eRel: number, bondsA = 0, bondsB = 0): number {
+// Oppositely charged ions recombine barrierlessly (no activation term) — J7.
+export function bondFormProbability(a: ChemElement, b: ChemElement, eRel: number, bondsA = 0, bondsB = 0, qa = 0, qb = 0): number {
   if (bondsA >= a.maxBonds || bondsB >= b.maxBonds) return 0;
   const aff = affinity(a, b);
   if (aff === 0 || eRel <= 0) return 0;
+  if (qa * qb < 0) return Math.max(aff, 0.6);
   return aff * Math.exp(-ACTIVATION_ENERGY / eRel);
+}
+
+// --- electrical charges (J7) ----------------------------------------------
+// Typical ion charge magnitude per element family; caps how far repeated
+// heterolytic events can charge one atom.
+export function maxIonCharge(el: ChemElement): number {
+  if (el.noble) return 0;
+  switch (el.category) {
+    case 'alkali metal': return 1;
+    case 'alkaline earth': return 2;
+    case 'halogen': return 1;
+    case 'transition metal':
+    case 'post-transition metal':
+    case 'lanthanide': return 2;
+    default: return el.symbol === 'O' || el.symbol === 'S' ? 2 : 1;
+  }
+}
+
+// How a breaking bond distributes electrons — the physically-accurate-splitting rule (J5/J6):
+// heterolytic for ionic pairs (|ΔEN| ≥ gap): the more electronegative atom takes the electron
+// (−1), the other becomes a cation (+1), each capped at the element's typical ion charge.
+// Homolytic for covalent/metallic pairs: neutral radicals, charges unchanged.
+export function cleaveCharges(a: ChemElement, b: ChemElement, qa: number, qb: number): [number, number] {
+  if (classifyBond(a, b) !== 'ionic') return [qa, qb];
+  const aTakes = (a.en ?? 0) >= (b.en ?? 0); // more electronegative → anion
+  const anion = aTakes ? a : b, cation = aTakes ? b : a;
+  let qAnion = aTakes ? qa : qb, qCation = aTakes ? qb : qa;
+  // transfer one electron only if both partners stay within their typical ion charge
+  if (qAnion - 1 >= -maxIonCharge(anion) && qCation + 1 <= maxIonCharge(cation)) {
+    qAnion -= 1;
+    qCation += 1;
+  }
+  return aTakes ? [qAnion, qCation] : [qCation, qAnion];
+}
+
+// Charge neutralization when two atoms bond: opposite charges cancel pairwise.
+export function neutralizeOnBond(qa: number, qb: number): [number, number] {
+  if (qa * qb >= 0) return [qa, qb];
+  const cancel = Math.min(Math.abs(qa), Math.abs(qb));
+  return [qa - Math.sign(qa) * cancel, qb - Math.sign(qb) * cancel];
 }
 
 // P(break) per check. Monotone increasing in eRel, decreasing in bond energy —
