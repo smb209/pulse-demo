@@ -167,6 +167,59 @@
     box-shadow: 0 0 10px rgba(68, 212, 228, 0.6);
   }
 
+  .presets {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .presets button {
+    padding: 8px 2px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .presets button:hover { color: var(--text); border-color: var(--secondary); }
+  .presets button.active {
+    color: var(--bg);
+    background: var(--secondary);
+    border-color: var(--secondary);
+    box-shadow: 0 0 14px rgba(218, 78, 134, 0.5);
+  }
+  #legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  #legend .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.63rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 8px;
+    user-select: none;
+  }
+  #legend .chip i {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.25);
+  }
+  @media (max-width: 720px) {
+    #panel .presets-wrap { flex: 1 1 100%; }
+  }
+
   .modes {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -241,6 +294,17 @@
 </div>
 
 <div id="panel">
+  <div class="group presets-wrap">
+    <label>Field · <span id="legendTitle"></span></label>
+    <div class="presets" id="presets">
+      <button data-preset="atmosphere" class="active" title="Earth's atmosphere">Air</button>
+      <button data-preset="sun" title="The Sun">Sun</button>
+      <button data-preset="earth" title="Bulk Earth">Earth</button>
+      <button data-preset="body" title="Human body">Body</button>
+      <button data-preset="seawater" title="Seawater">Sea</button>
+    </div>
+    <div id="legend"></div>
+  </div>
   <div class="group modes" id="modes">
     <button data-mode="attract" class="active">Attract</button>
     <button data-mode="repel">Repel</button>

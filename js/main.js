@@ -2,6 +2,7 @@
 // this file owns the canvas, sprites, controls, and the window.__pulse validation probe.
 
 import { BY_SYMBOL } from './elements.js';
+import { PRESET_BY_ID, samplePreset } from './chemistry.js';
 import { createSim, drawRadius } from './sim.js';
 
 const canvas = document.getElementById('stage');
@@ -10,8 +11,8 @@ const ctx = canvas.getContext('2d');
 let W = window.innerWidth, H = window.innerHeight;
 let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-// Slice 2 placeholder: hydrogen-only field. Slice 3 replaces this with preset sampling.
-let sampleElement = () => BY_SYMBOL.H;
+let currentPreset = 'atmosphere';
+const sampleElement = () => samplePreset(currentPreset);
 
 const sim = createSim({
   width: W, height: H,
@@ -101,6 +102,31 @@ function flashAtCap() {
   statAtomsEl.parentElement.classList.add('flash');
 }
 
+// --- presets + legend --------------------------------------------------------
+
+const legendEl = document.getElementById('legend');
+const legendTitleEl = document.getElementById('legendTitle');
+
+function renderLegend() {
+  const preset = PRESET_BY_ID[currentPreset];
+  legendTitleEl.textContent = preset.name;
+  const entries = Object.entries(preset.mix).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  legendEl.innerHTML = entries.map(([sym, pct]) => {
+    const el = BY_SYMBOL[sym];
+    return `<div class="chip" title="${el.name}"><i style="background:${el.cpk}"></i>${sym} ${pct >= 1 ? Math.round(pct) + '%' : '<1%'}</div>`;
+  }).join('');
+}
+
+document.getElementById('presets').addEventListener('click', e => {
+  const btn = e.target.closest('button');
+  if (!btn || btn.dataset.preset === currentPreset) return;
+  currentPreset = btn.dataset.preset;
+  document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('active', b === btn));
+  renderLegend();
+  sim.respawn();
+});
+renderLegend();
+
 // --- controls --------------------------------------------------------------
 
 document.getElementById('modes').addEventListener('click', e => {
@@ -182,13 +208,5 @@ requestAnimationFrame(frame);
 // --- validation probe (read-only) — build plan D7 -----------------------------
 
 window.__pulse = {
-  stats: () => ({ ...sim.stats(), fps }),
+  stats: () => ({ ...sim.stats(), fps, preset: currentPreset }),
 };
-
-export { sim, setSampler };
-
-// Slice 3 hook: swap the element sampler (and optionally respawn).
-function setSampler(fn, respawn = false) {
-  sampleElement = fn;
-  if (respawn) sim.respawn();
-}
