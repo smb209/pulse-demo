@@ -23,7 +23,7 @@ export function bathEnergy(temperature) {
 // lives here, and chemistry.js's monotone activation gate stays intact.
 export function captureFactor(eRel, eBond) {
   if (eBond <= 0) return 0;
-  const x = eRel / (0.5 * eBond);
+  const x = eRel / (0.35 * eBond);
   return 1 / (1 + x * x);
 }
 
@@ -31,7 +31,7 @@ const DAMPING = 0.985;
 const POINTER_FORCE = 0.9;
 const POINTER_RANGE = 190;
 const FORM_RATE = 0.7;     // per-frame scale on P(form) per in-range pair
-const BREAK_RATE = 0.12;   // per-frame scale on P(break) per bond
+const BREAK_RATE = 0.18;   // per-frame scale on P(break) per bond
 const SPRING_K = 0.045;
 const BOND_DAMP = 0.92;    // damping of relative velocity along a bond axis
 const REBOND_COOLDOWN = 120; // frames a broken pair cannot re-form
