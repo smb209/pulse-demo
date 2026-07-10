@@ -264,21 +264,58 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 
-// --- molecule ticker -----------------------------------------------------------
+// --- molecule ticker + bar chart (J11) -------------------------------------------
 
 const tickerEl = document.getElementById('ticker')!;
+const chartEl = document.getElementById('molechart')!;
+const chartRowsEl = document.getElementById('mcRows')!;
+const chartTotalEl = document.getElementById('mcTotal')!;
 
-function renderTicker({ molecules }: MoleculeReport): void {
+tickerEl.addEventListener('click', () => {
+  const open = chartEl.hidden === true;
+  chartEl.hidden = !open;
+  tickerEl.classList.toggle('open', open);
+});
+
+function renderTicker(report: MoleculeReport): void {
+  const { molecules } = report;
   const top = Object.entries(molecules).sort((a, b) => b[1] - a[1]).slice(0, 4);
   if (!top.length) {
     tickerEl.textContent = 'no molecules yet';
     tickerEl.classList.add('empty');
+  } else {
+    tickerEl.classList.remove('empty');
+    tickerEl.innerHTML = top
+      .map(([name, n]) => `<b>${name}</b><span>×${n}</span>`)
+      .join('<em>·</em>');
+  }
+  if (!chartEl.hidden) renderChart(report);
+}
+
+// Horizontal single-hue bar list: magnitude ranking of molecule species as % of all
+// molecules. Identity lives in the row label (no categorical palette needed); values
+// wear text tokens, the bar wears the primary hue.
+function renderChart({ molecules, components }: MoleculeReport): void {
+  if (!components) {
+    chartTotalEl.textContent = '';
+    chartRowsEl.innerHTML = '<div class="mc-empty">no molecules yet</div>';
     return;
   }
-  tickerEl.classList.remove('empty');
-  tickerEl.innerHTML = top
-    .map(([name, n]) => `<b>${name}</b><span>×${n}</span>`)
-    .join('<em>·</em>');
+  const ranked = Object.entries(molecules).sort((a, b) => b[1] - a[1]);
+  const top = ranked.slice(0, 8);
+  const otherCount = ranked.slice(8).reduce((s, [, n]) => s + n, 0);
+  if (otherCount > 0) top.push(['other', otherCount]);
+  const maxPct = (top[0][1] / components) * 100;
+  chartTotalEl.textContent = `${components} total`;
+  chartRowsEl.innerHTML = top.map(([name, n]) => {
+    const pct = (n / components) * 100;
+    const width = maxPct > 0 ? (pct / maxPct) * 100 : 0;
+    return `<div class="mc-row" title="${name}: ${n} of ${components} molecules (${pct.toFixed(1)}%)">`
+      + `<span class="mc-label">${name}</span>`
+      + `<span class="mc-track"><span class="mc-fill" style="width:${width.toFixed(1)}%; display:block"></span></span>`
+      + `<span class="mc-val">${pct.toFixed(0)}% ×${n}</span>`
+      + `</div>`;
+  }).join('');
 }
 
 // --- validation probe (read-only) — build plan D7 -----------------------------

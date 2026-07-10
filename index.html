@@ -104,7 +104,80 @@
     padding: 6px 14px;
     font-size: 0.74rem;
     user-select: none;
-    pointer-events: none;
+    cursor: pointer;
+  }
+  #ticker:hover { border-color: var(--primary); }
+  #ticker::after {
+    content: '▾';
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    margin-left: 2px;
+  }
+  #ticker.open::after { content: '▴'; }
+
+  #molechart {
+    position: fixed;
+    top: calc(max(14px, env(safe-area-inset-top)) + 96px);
+    right: 18px;
+    z-index: 10;
+    width: 250px;
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    user-select: none;
+  }
+  #molechart .mc-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  #molechart .mc-row {
+    display: grid;
+    grid-template-columns: 56px 1fr 44px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+  }
+  #molechart .mc-label {
+    font-size: 0.74rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #molechart .mc-track {
+    height: 6px;
+    background: var(--surface-2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  #molechart .mc-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 0 3px 3px 0;
+    transition: width 0.3s ease;
+  }
+  #molechart .mc-val {
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    text-align: right;
+  }
+  #molechart .mc-empty {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 8px 0;
+  }
+  @media (max-width: 720px) {
+    #molechart { width: min(250px, calc(100vw - 36px)); }
   }
   #ticker b { color: var(--accent); font-weight: 700; }
   #ticker span { color: var(--text-muted); font-size: 0.66rem; }
@@ -361,7 +434,12 @@
   <div class="stat"><b id="bonds">—</b><span>bonds</span></div>
 </div>
 
-<div id="ticker" class="empty">no molecules yet</div>
+<div id="ticker" class="empty" title="Click for the molecule breakdown">no molecules yet</div>
+
+<div id="molechart" hidden>
+  <div class="mc-head"><span>Molecule mix</span><span id="mcTotal"></span></div>
+  <div id="mcRows"></div>
+</div>
 
 <div id="panel">
   <div class="group presets-wrap">
