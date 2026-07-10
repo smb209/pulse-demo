@@ -30,10 +30,10 @@ Gates AND-ed within a scenario; run passes only if all scenario + global gates p
 - [ ] G-P3.6 (slice 4+) Recognizer reports N₂>0 & O₂>0 (atmosphere), H₂O>0 (seawater).
 - [ ] G-P3.7 No atom ever exceeds its element's maxBonds (probe exposes max observed).
 
-### P4
-- [ ] G-P4.1 B_hot ≤ 0.3 · B₀.
-- [ ] G-P4.2 B_cold ≥ 0.8 · B₀.
-- [ ] G-P4.3 Intermediate-heat survivor ratio (N–N survival rate > O–O survival rate) holds.
+### P4 (amended with the slice-2 calibration — hot gate on seawater, survivor bias on atmosphere)
+- [ ] G-P4.1 Seawater: B_hot ≤ 0.3 · B₀.
+- [ ] G-P4.2 Seawater: B_cold ≥ 0.8 · B₀.
+- [ ] G-P4.3 Atmosphere at max temp: N–N share of bonds rises vs settle; N–O + O–O share falls.
 
 ### P5
 - [ ] G-P5.1 FPS ≥ 30 at 500 atoms, both viewports.

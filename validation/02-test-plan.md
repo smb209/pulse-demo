@@ -78,13 +78,18 @@ Each scenario is independent given [01-pre-check](01-pre-check.md) ran cleanly. 
 
 ## P4. Energy gates bonding both directions
 
+> Amended during slice-2 calibration (2026-07-10): the hot-dissociation gate now runs on
+> **seawater** (O–H, 463 kJ/mol — breaks at max temp) instead of atmosphere, because the
+> calibrated model honestly reproduces N≡N's (945 kJ/mol) resistance to dissociation —
+> atmosphere at max temp *keeps* its N₂. That resilience became the survivor-bias gate.
+
 **Phase:** integration.
 
-**Setup:** pre-check clean; atmosphere preset settled 60 s at moderate temperature (bond count B₀ > 0 from P3).
+**Setup:** pre-check clean; **seawater** preset settled 60 s at moderate temperature (bond count B₀ > 0 from P3).
 
-**Action:** drag Temperature slider to max; wait 30 s; record B_hot. Then to minimum; wait 60 s; record B_cold.
+**Action:** drag Temperature slider to max; wait 30 s; record B_hot. Then to minimum available; wait 60 s; record B_cold.
 
-**Observation:** `p4/bonds-timeline.json`. Expect B_hot ≪ B₀ (hot shakes bonds apart) and B_cold ≥ B₀·0.8 (cooling lets bonds re-form and survive). Strong-bond bias: at an intermediate hot setting, surviving bonds skew toward N–N (945 kJ/mol) over O–O (498) — capture the ratio.
+**Observation:** `p4/bonds-timeline.json`. Expect B_hot ≪ B₀ (hot shakes O–H apart) and B_cold ≥ B₀·0.8 (cooling lets bonds re-form and survive). Survivor bias on **atmosphere**: at max temp, the N–N share of surviving bonds rises while the N–O + O–O share falls (triple bond outlives the rest) — capture both shares at settle and at hot.
 
 **Time budget:** ~5 min.
 
