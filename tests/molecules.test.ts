@@ -1,11 +1,12 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { BY_SYMBOL } from '../js/elements.js';
-import { analyzeMolecules, formulaOf, KNOWN_MOLECULES } from '../js/chemistry.js';
+import { BY_SYMBOL } from '../src/elements';
+import { analyzeMolecules, formulaOf, KNOWN_MOLECULES } from '../src/chemistry';
 
 // hand-built graphs: atoms are plain {el} objects, bonds {a, b, order}
-const atom = sym => ({ el: BY_SYMBOL[sym] });
-const bond = (a, b, order = 1) => ({ a, b, order });
+const atom = (sym: string) => ({ el: BY_SYMBOL[sym] });
+type TestAtom = ReturnType<typeof atom>;
+const bond = (a: TestAtom, b: TestAtom, order = 1) => ({ a, b, order });
 
 test('H-O-H is recognized as H₂O', () => {
   const O = atom('O'), h1 = atom('H'), h2 = atom('H');
@@ -19,7 +20,7 @@ test('H-O-O-H is H₂O₂, NOT water', () => {
   const o1 = atom('O'), o2 = atom('O'), h1 = atom('H'), h2 = atom('H');
   const r = analyzeMolecules([bond(h1, o1), bond(o1, o2), bond(o2, h2)]);
   assert.deepEqual(r.molecules, { 'H₂O₂': 1 });
-  assert.equal(r.molecules['H₂O'], undefined);
+  assert.ok(!('H₂O' in r.molecules), 'no false water');
 });
 
 test('O=C=O is CO₂ (Hill order: C before O)', () => {

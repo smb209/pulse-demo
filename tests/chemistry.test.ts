@@ -1,16 +1,16 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { ELEMENTS, BY_SYMBOL } from '../js/elements.js';
+import { ELEMENTS, BY_SYMBOL } from '../src/elements';
 import {
   affinity, classifyBond, bondEnergy, bondFormProbability, bondBreakProbability,
   maxBondOrder, pairKey, BOND_ENERGIES, PRESETS, PRESET_BY_ID, samplePreset,
   ACTIVATION_ENERGY, IONIC_EN_GAP,
-} from '../js/chemistry.js';
+} from '../src/chemistry';
 
-const el = s => BY_SYMBOL[s];
+const el = (s: string) => BY_SYMBOL[s];
 
 // deterministic rng for sampler tests
-function mulberry32(seed) {
+function mulberry32(seed: number) {
   let a = seed;
   return () => {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -40,7 +40,7 @@ test('element properties are physically sane', () => {
       assert.equal(e.maxBonds, 0, `${e.symbol} noble maxBonds`);
       assert.equal(e.en, null, `${e.symbol} noble EN`);
     } else {
-      assert.ok(e.en > 0.5 && e.en < 4.1, `${e.symbol} electronegativity`);
+      assert.ok(e.en !== null && e.en > 0.5 && e.en < 4.1, `${e.symbol} electronegativity`);
     }
   }
   // masses monotone-ish sanity anchors
@@ -68,7 +68,7 @@ test('rule 2: exhausted valence blocks formation', () => {
 test('rule 3: big-gap metal+nonmetal is ionic and strong', () => {
   assert.equal(classifyBond(el('Na'), el('Cl')), 'ionic');
   assert.equal(classifyBond(el('K'), el('F')), 'ionic');
-  assert.ok(Math.abs(el('Na').en - el('Cl').en) >= IONIC_EN_GAP);
+  assert.ok(Math.abs(el('Na').en! - el('Cl').en!) >= IONIC_EN_GAP);
   assert.ok(affinity(el('Na'), el('Cl')) > affinity(el('Fe'), el('Ni')), 'ionic beats metallic');
 });
 
@@ -194,7 +194,7 @@ test('sampler converges to the mix (n=10k, ±2pp)', () => {
   const rng = mulberry32(42);
   for (const p of PRESETS) {
     const n = 10000;
-    const counts = {};
+    const counts: Record<string, number> = {};
     for (let i = 0; i < n; i++) {
       const e = samplePreset(p.id, rng);
       counts[e.symbol] = (counts[e.symbol] ?? 0) + 1;

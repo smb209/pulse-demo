@@ -14,9 +14,27 @@ const CATEGORIES = {
   tm: 'transition metal',
   pt: 'post-transition metal',
   ln: 'lanthanide',
-};
+} as const;
 
-const ROWS = [
+type CategoryCode = keyof typeof CATEGORIES;
+
+export interface ChemElement {
+  z: number;
+  symbol: string;
+  name: string;
+  mass: number;
+  en: number | null;
+  radius: number;
+  maxBonds: number;
+  category: (typeof CATEGORIES)[CategoryCode];
+  cpk: string;
+  noble: boolean;
+  metal: boolean;
+}
+
+type Row = [number, string, string, number, number | null, number, number, CategoryCode, string];
+
+const ROWS: Row[] = [
   [1,  'H',  'Hydrogen',      1.008,  2.20, 31,  1, 'nm', '#FFFFFF'],
   [2,  'He', 'Helium',        4.003,  null, 28,  0, 'ng', '#D9FFFF'],
   [3,  'Li', 'Lithium',       6.94,   0.98, 128, 1, 'am', '#CC80FF'],
@@ -101,7 +119,7 @@ const ROWS = [
   [82, 'Pb', 'Lead',          207.2,  2.33, 146, 2, 'pt', '#575961'],
 ];
 
-export const ELEMENTS = ROWS.map(([z, symbol, name, mass, en, radius, maxBonds, cat, cpk]) => ({
+export const ELEMENTS: ChemElement[] = ROWS.map(([z, symbol, name, mass, en, radius, maxBonds, cat, cpk]) => ({
   z, symbol, name, mass, en, radius, maxBonds,
   category: CATEGORIES[cat],
   cpk,
@@ -109,4 +127,4 @@ export const ELEMENTS = ROWS.map(([z, symbol, name, mass, en, radius, maxBonds, 
   metal: cat === 'am' || cat === 'ae' || cat === 'tm' || cat === 'pt' || cat === 'ln',
 }));
 
-export const BY_SYMBOL = Object.fromEntries(ELEMENTS.map(e => [e.symbol, e]));
+export const BY_SYMBOL: Record<string, ChemElement> = Object.fromEntries(ELEMENTS.map(e => [e.symbol, e]));

@@ -1,9 +1,9 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { PRESETS, samplePreset } from '../js/chemistry.js';
-import { createSim } from '../js/sim.js';
+import { PRESETS, samplePreset } from '../src/chemistry';
+import { createSim } from '../src/sim';
 
-function mulberry32(seed) {
+function mulberry32(seed: number) {
   let a = seed;
   return () => {
     a |= 0; a = (a + 0x6D2B79F5) | 0;

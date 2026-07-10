@@ -1,10 +1,10 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { BY_SYMBOL } from '../js/elements.js';
-import { samplePreset } from '../js/chemistry.js';
-import { createSim, captureFactor, bathEnergy, drawRadius, restLength } from '../js/sim.js';
+import { BY_SYMBOL } from '../src/elements';
+import { samplePreset } from '../src/chemistry';
+import { createSim, captureFactor, bathEnergy, drawRadius, restLength } from '../src/sim';
 
-function mulberry32(seed) {
+function mulberry32(seed: number) {
   let a = seed;
   return () => {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -14,13 +14,12 @@ function mulberry32(seed) {
   };
 }
 
-function makeSim(overrides = {}) {
+function makeSim(overrides: { seed?: number; preset?: string; cap?: number } = {}) {
   const rng = mulberry32(overrides.seed ?? 11);
   return createSim({
-    width: 1000, height: 700, cap: 120, temperature: 40,
+    width: 1000, height: 700, cap: overrides.cap ?? 120, temperature: 40,
     sampleElement: () => samplePreset(overrides.preset ?? 'seawater', rng),
     rng,
-    ...overrides,
   });
 }
 

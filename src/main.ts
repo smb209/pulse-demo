@@ -1,12 +1,16 @@
-// Rendering + UI wiring. All chemistry lives in chemistry.js, all kinetics in sim.js;
+// Rendering + UI wiring. All chemistry lives in chemistry.ts, all kinetics in sim.ts;
 // this file owns the canvas, sprites, controls, and the window.__pulse validation probe.
 
-import { BY_SYMBOL } from './elements.js';
-import { PRESET_BY_ID, samplePreset, analyzeMolecules } from './chemistry.js';
-import { createSim, drawRadius } from './sim.js';
+import { BY_SYMBOL, type ChemElement } from './elements';
+import { PRESET_BY_ID, samplePreset, analyzeMolecules, type MoleculeReport } from './chemistry';
+import { createSim, drawRadius } from './sim';
 
-const canvas = document.getElementById('stage');
-const ctx = canvas.getContext('2d');
+declare global {
+  interface Window { __pulse: { stats: () => object } }
+}
+
+const canvas = document.getElementById('stage') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d')!;
 
 let W = window.innerWidth, H = window.innerHeight;
 let dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -21,7 +25,7 @@ const sim = createSim({
   temperature: 40,
 });
 
-function resize() {
+function resize(): void {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth;
   H = window.innerHeight;
@@ -38,12 +42,15 @@ sim.respawn();
 
 // --- element sprites (pre-rendered: glow + CPK disc + symbol label) ------
 
-const spriteCache = new Map();
-function luminance(hex) {
+interface Sprite { canvas: HTMLCanvasElement; half: number }
+const spriteCache = new Map<string, Sprite>();
+
+function luminance(hex: string): number {
   const n = parseInt(hex.slice(1), 16);
   return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
 }
-function sprite(el) {
+
+function sprite(el: ChemElement): Sprite {
   let s = spriteCache.get(el.symbol);
   if (s) return s;
   const r = drawRadius(el);
@@ -51,7 +58,7 @@ function sprite(el) {
   const size = Math.ceil((r + glow) * 2 * dpr);
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d')!;
   g.scale(dpr, dpr);
   const cx = size / (2 * dpr);
   const grad = g.createRadialGradient(cx, cx, r * 0.6, cx, cx, r + glow);
@@ -77,50 +84,52 @@ function sprite(el) {
 
 // --- input ---------------------------------------------------------------
 
-const statAtomsEl = document.getElementById('atoms');
-function setPointer(e) {
-  const t = e.touches ? e.touches[0] : e;
+const statAtomsEl = document.getElementById('atoms')!;
+
+function setPointer(e: PointerEvent | TouchEvent): void {
+  const t = 'touches' in e ? e.touches[0] : e;
+  if (!t) return;
   sim.setPointer({ x: t.clientX, y: t.clientY, active: true });
 }
 window.addEventListener('pointermove', setPointer);
 window.addEventListener('pointerdown', e => {
-  if (e.target.closest('#panel')) return;
+  if ((e.target as Element).closest('#panel')) return;
   setPointer(e);
-  const t = e.touches ? e.touches[0] : e;
-  if (sim.burst(t.clientX, t.clientY, 30) === 0) flashAtCap();
+  if (sim.burst(e.clientX, e.clientY, 30) === 0) flashAtCap();
 });
 window.addEventListener('pointerleave', () => sim.setPointer({ active: false }));
 window.addEventListener('touchmove', e => {
-  if (!e.target.closest('#panel')) e.preventDefault();
+  if (!(e.target as Element).closest('#panel')) e.preventDefault();
   setPointer(e);
 }, { passive: false });
 window.addEventListener('touchend', () => sim.setPointer({ active: false }));
 
-function flashAtCap() {
-  statAtomsEl.parentElement.classList.remove('flash');
-  void statAtomsEl.parentElement.offsetWidth; // restart animation
-  statAtomsEl.parentElement.classList.add('flash');
+function flashAtCap(): void {
+  const stat = statAtomsEl.parentElement!;
+  stat.classList.remove('flash');
+  void (stat as HTMLElement).offsetWidth; // restart animation
+  stat.classList.add('flash');
 }
 
 // --- presets + legend --------------------------------------------------------
 
-const legendEl = document.getElementById('legend');
-const legendTitleEl = document.getElementById('legendTitle');
+const legendEl = document.getElementById('legend')!;
+const legendTitleEl = document.getElementById('legendTitle')!;
 
-function renderLegend() {
+function renderLegend(): void {
   const preset = PRESET_BY_ID[currentPreset];
   legendTitleEl.textContent = preset.name;
   const entries = Object.entries(preset.mix).sort((a, b) => b[1] - a[1]).slice(0, 6);
   legendEl.innerHTML = entries.map(([sym, pct]) => {
     const el = BY_SYMBOL[sym];
-    return `<div class="chip" title="${el.name}"><i style="background:${el.cpk}"></i>${sym} ${pct >= 1 ? Math.round(pct) + '%' : '<1%'}</div>`;
+    return `<div class="chip" title="${el.name}"><i style="background:${el.cpk}"></i>${sym} ${pct >= 1 ? Math.round(pct) + '%' : '&lt;1%'}</div>`;
   }).join('');
 }
 
-document.getElementById('presets').addEventListener('click', e => {
-  const btn = e.target.closest('button');
+document.getElementById('presets')!.addEventListener('click', e => {
+  const btn = (e.target as Element).closest('button');
   if (!btn || btn.dataset.preset === currentPreset) return;
-  currentPreset = btn.dataset.preset;
+  currentPreset = btn.dataset.preset!;
   document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('active', b === btn));
   renderLegend();
   sim.respawn();
@@ -129,39 +138,39 @@ renderLegend();
 
 // --- controls --------------------------------------------------------------
 
-document.getElementById('modes').addEventListener('click', e => {
-  const btn = e.target.closest('button');
+document.getElementById('modes')!.addEventListener('click', e => {
+  const btn = (e.target as Element).closest('button');
   if (!btn) return;
-  sim.setPointer({ mode: btn.dataset.mode });
+  sim.setPointer({ mode: btn.dataset.mode as 'attract' | 'repel' | 'vortex' });
   document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('active', b === btn));
 });
 
-const capIn = document.getElementById('cap');
-const tempIn = document.getElementById('temp');
+const capIn = document.getElementById('cap') as HTMLInputElement;
+const tempIn = document.getElementById('temp') as HTMLInputElement;
 capIn.addEventListener('input', () => {
   const cap = +capIn.value;
-  document.getElementById('capOut').textContent = cap;
+  document.getElementById('capOut')!.textContent = String(cap);
   sim.setCap(cap);
   sim.spawnTo(cap);
 });
 tempIn.addEventListener('input', () => {
   const t = +tempIn.value;
-  document.getElementById('tempOut').textContent = t;
+  document.getElementById('tempOut')!.textContent = String(t);
   sim.setTemperature(t);
 });
-document.getElementById('burstBtn').addEventListener('click', () => {
+document.getElementById('burstBtn')!.addEventListener('click', () => {
   if (sim.burst(W / 2, H / 2, 30) === 0) flashAtCap();
 });
 
 // --- render loop -------------------------------------------------------------
 
-const fpsEl = document.getElementById('fps');
-const bondsEl = document.getElementById('bonds');
+const fpsEl = document.getElementById('fps')!;
+const bondsEl = document.getElementById('bonds')!;
 let last = performance.now(), frames = 0, fpsTimer = last, fps = 0;
 
 const BOND_STYLES = ['rgba(190,210,214,0.55)', 'rgba(190,210,214,0.5)', 'rgba(190,210,214,0.45)'];
 
-function frame(now) {
+function frame(now: number): void {
   const dtMs = now - last;
   last = now;
   sim.step(dtMs);
@@ -195,11 +204,10 @@ function frame(now) {
   frames++;
   if (now - fpsTimer >= 500) {
     fps = Math.round(frames * 1000 / (now - fpsTimer));
-    fpsEl.textContent = fps;
-    statAtomsEl.textContent = sim.atoms.length;
-    bondsEl.textContent = sim.bonds.length;
-    lastMolecules = analyzeMolecules(sim.bonds);
-    renderTicker(lastMolecules);
+    fpsEl.textContent = String(fps);
+    statAtomsEl.textContent = String(sim.atoms.length);
+    bondsEl.textContent = String(sim.bonds.length);
+    renderTicker(analyzeMolecules(sim.bonds));
     frames = 0;
     fpsTimer = now;
   }
@@ -209,10 +217,9 @@ requestAnimationFrame(frame);
 
 // --- molecule ticker -----------------------------------------------------------
 
-const tickerEl = document.getElementById('ticker');
-let lastMolecules = { molecules: {}, components: 0, named: 0 };
+const tickerEl = document.getElementById('ticker')!;
 
-function renderTicker({ molecules }) {
+function renderTicker({ molecules }: MoleculeReport): void {
   const top = Object.entries(molecules).sort((a, b) => b[1] - a[1]).slice(0, 4);
   if (!top.length) {
     tickerEl.textContent = 'no molecules yet';

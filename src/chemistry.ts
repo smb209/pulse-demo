@@ -1,28 +1,31 @@
-// Pure bonding logic + preset distributions. No DOM, no canvas — unit-tested under node --test.
+// Pure bonding logic + preset distributions. No DOM, no canvas — unit-tested under vitest.
 // Model per build plan D3: property-derived pair affinity (rules 1-5) with a curated
 // override table of real bond energies, energy-gated in both directions (Boltzmann-flavored).
-// Energies are kJ/mol throughout; the sim maps kinetic energy into this scale (ENERGY_SCALE in sim.js).
+// Energies are kJ/mol throughout; the sim maps kinetic energy into this scale (ENERGY_SCALE in sim.ts).
 
-import { BY_SYMBOL } from './elements.js';
+import { BY_SYMBOL, type ChemElement } from './elements';
+
+export type BondType = 'none' | 'ionic' | 'covalent' | 'metallic';
+export type Rng = () => number;
 
 // --- pair affinity -----------------------------------------------------
 
 export const IONIC_EN_GAP = 1.7;
 
-export function pairKey(a, b) {
+export function pairKey(a: ChemElement, b: ChemElement): string {
   return a.symbol < b.symbol ? `${a.symbol}|${b.symbol}` : `${b.symbol}|${a.symbol}`;
 }
 
 // Real bond (dissociation / lattice-representative) energies, kJ/mol.
 // These pairs are the "famous chemistry" the presets should reliably produce.
-export const BOND_ENERGIES = {
+export const BOND_ENERGIES: Record<string, number> = {
   'H|H': 436, 'O|O': 498, 'N|N': 945, 'H|O': 463, 'C|H': 413, 'C|O': 799,
   'Cl|Na': 787, 'O|Si': 452, 'Fe|O': 409, 'Cl|H': 431, 'C|C': 347,
   'O|S': 522, 'Mg|O': 394, 'Ca|O': 402, 'Al|O': 512, 'C|N': 305,
 };
 
 // Bond type under the general rules. 'none' when no bond can ever form.
-export function classifyBond(a, b) {
+export function classifyBond(a: ChemElement, b: ChemElement): BondType {
   if (a.noble || b.noble) return 'none';
   if (a.maxBonds === 0 || b.maxBonds === 0) return 'none';
   const gap = Math.abs((a.en ?? 0) - (b.en ?? 0));
@@ -34,7 +37,7 @@ export function classifyBond(a, b) {
 }
 
 // Intrinsic affinity 0..1 — "how much these two want each other," before energy gating.
-export function affinity(a, b) {
+export function affinity(a: ChemElement, b: ChemElement): number {
   const type = classifyBond(a, b);
   if (type === 'none') return 0;
   if (BOND_ENERGIES[pairKey(a, b)]) {
@@ -59,7 +62,7 @@ export function affinity(a, b) {
 // is weaker: E(order) = E_full · (order/maxOrder)^1.5. That puts an N–N single at ~182
 // (real: ~160) and an O–O single at ~176 (real: ~146) — without it, order-1 chain links
 // inherit the triple-bond energy and hot fields accrete unbreakable N-blobs.
-export function bondEnergy(a, b, order) {
+export function bondEnergy(a: ChemElement, b: ChemElement, order?: number): number {
   const type = classifyBond(a, b);
   if (type === 'none') return 0;
   const full = maxBondOrder(a, b);
@@ -78,7 +81,7 @@ export const ACTIVATION_ENERGY = 40; // kJ/mol — approach energy needed to rea
 
 // P(form) per candidate encounter. eRel = relative kinetic energy of the pair, kJ/mol scale.
 // Monotone increasing in eRel; 0 for incompatible pairs or exhausted valence.
-export function bondFormProbability(a, b, eRel, bondsA = 0, bondsB = 0) {
+export function bondFormProbability(a: ChemElement, b: ChemElement, eRel: number, bondsA = 0, bondsB = 0): number {
   if (bondsA >= a.maxBonds || bondsB >= b.maxBonds) return 0;
   const aff = affinity(a, b);
   if (aff === 0 || eRel <= 0) return 0;
@@ -88,14 +91,14 @@ export function bondFormProbability(a, b, eRel, bondsA = 0, bondsB = 0) {
 // P(break) per check. Monotone increasing in eRel, decreasing in bond energy —
 // N≡N (945) survives temperatures that shatter O–H (463), but a single N–N chain
 // link (order 1 of 3) breaks like the ~180 kJ/mol bond it really is.
-export function bondBreakProbability(a, b, eRel, order) {
+export function bondBreakProbability(a: ChemElement, b: ChemElement, eRel: number, order?: number): number {
   if (eRel <= 0) return 0;
   return Math.exp(-bondEnergy(a, b, order) / eRel);
 }
 
 // Max bond order for a pair (parallel-stroke rendering + valence bookkeeping).
-const BOND_ORDERS = { 'N|N': 3, 'O|O': 2, 'C|O': 2, 'C|C': 2, 'O|S': 2 };
-export function maxBondOrder(a, b) {
+const BOND_ORDERS: Record<string, number> = { 'N|N': 3, 'O|O': 2, 'C|O': 2, 'C|C': 2, 'O|S': 2 };
+export function maxBondOrder(a: ChemElement, b: ChemElement): number {
   return BOND_ORDERS[pairKey(a, b)] ?? 1;
 }
 
@@ -105,12 +108,12 @@ export function maxBondOrder(a, b) {
 // structural isomer handling is needed at this vocabulary size.
 
 const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉';
-function sub(n) {
+function sub(n: number): string {
   return n === 1 ? '' : String(n).split('').map(d => SUBSCRIPTS[+d]).join('');
 }
 
 // Hill order: C first, then H, then alphabetical; no C → all alphabetical.
-export function formulaOf(counts) {
+export function formulaOf(counts: Record<string, number>): string {
   const syms = Object.keys(counts).sort();
   const ordered = counts.C
     ? ['C', ...(counts.H ? ['H'] : []), ...syms.filter(s => s !== 'C' && s !== 'H')]
@@ -118,7 +121,7 @@ export function formulaOf(counts) {
   return ordered.map(s => s + sub(counts[s])).join('');
 }
 
-export const KNOWN_MOLECULES = {
+export const KNOWN_MOLECULES: Record<string, string> = {
   'H₂': 'H₂', 'O₂': 'O₂', 'N₂': 'N₂', 'H₂O': 'H₂O', 'CO₂': 'CO₂', 'CH₄': 'CH₄',
   'ClNa': 'NaCl', 'O₂Si': 'SiO₂', 'FeO': 'FeO', 'Fe₂O₃': 'Fe₂O₃', 'MgO': 'MgO',
   'CaO': 'CaO', 'ClH': 'HCl', 'CO': 'CO', 'H₃N': 'NH₃', 'H₂O₂': 'H₂O₂', 'H₂S': 'H₂S',
@@ -127,12 +130,16 @@ export const KNOWN_MOLECULES = {
 // bonds: [{a, b, ...}] where a/b carry .el.symbol and stable identity.
 // Returns { molecules: {display → count}, components, named } — named = count of
 // components whose formula is in KNOWN_MOLECULES.
-export function analyzeMolecules(bonds) {
-  const parent = new Map();
-  const find = x => {
+export interface BondLike { a: { el: ChemElement }, b: { el: ChemElement } }
+export interface MoleculeReport { molecules: Record<string, number>; components: number; named: number }
+
+export function analyzeMolecules(bonds: BondLike[]): MoleculeReport {
+  type Node = BondLike['a'];
+  const parent = new Map<Node, Node>();
+  const find = (x: Node): Node => {
     let r = x;
-    while (parent.get(r) !== r) r = parent.get(r);
-    while (parent.get(x) !== r) { const n = parent.get(x); parent.set(x, r); x = n; }
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    while (parent.get(x) !== r) { const n = parent.get(x)!; parent.set(x, r); x = n; }
     return r;
   };
   for (const bd of bonds) {
@@ -141,14 +148,14 @@ export function analyzeMolecules(bonds) {
     const ra = find(bd.a), rb = find(bd.b);
     if (ra !== rb) parent.set(ra, rb);
   }
-  const comps = new Map(); // root → {sym → count}
+  const comps = new Map<Node, Record<string, number>>(); // root → {sym → count}
   for (const atom of parent.keys()) {
     const root = find(atom);
     let c = comps.get(root);
     if (!c) comps.set(root, c = {});
     c[atom.el.symbol] = (c[atom.el.symbol] ?? 0) + 1;
   }
-  const molecules = {};
+  const molecules: Record<string, number> = {};
   let named = 0;
   for (const counts of comps.values()) {
     const formula = formulaOf(counts);
@@ -162,7 +169,9 @@ export function analyzeMolecules(bonds) {
 
 // --- presets (atom-count fractions, %) — build plan D6 ------------------
 
-export const PRESETS = [
+export interface Preset { id: string; name: string; mix: Record<string, number> }
+
+export const PRESETS: Preset[] = [
   {
     id: 'atmosphere', name: "Earth's atmosphere",
     mix: { N: 78.08, O: 20.95, Ar: 0.93, C: 0.02, Ne: 0.02 },
@@ -185,11 +194,11 @@ export const PRESETS = [
   },
 ];
 
-export const PRESET_BY_ID = Object.fromEntries(PRESETS.map(p => [p.id, p]));
+export const PRESET_BY_ID: Record<string, Preset> = Object.fromEntries(PRESETS.map(p => [p.id, p]));
 
 // Weighted sample: returns an element object. rng defaults to Math.random for the sim;
 // tests inject a seeded rng.
-export function samplePreset(presetId, rng = Math.random) {
+export function samplePreset(presetId: string, rng: Rng = Math.random): ChemElement {
   const preset = PRESET_BY_ID[presetId];
   if (!preset) throw new Error(`unknown preset: ${presetId}`);
   const entries = Object.entries(preset.mix);

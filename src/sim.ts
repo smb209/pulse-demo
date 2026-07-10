@@ -1,11 +1,54 @@
 // Simulation core: atoms, persistence + cap, energy, bond formation/breaking, spring forces.
-// Headless by design (no DOM/canvas) so the invariants are unit-testable under node --test.
-// Chemistry (affinity, energy gates) lives in chemistry.js; this file owns kinetics:
+// Headless by design (no DOM/canvas) so the invariants are unit-testable under vitest.
+// Chemistry (affinity, energy gates) lives in chemistry.ts; this file owns kinetics:
 // which pairs meet, how much relative kinetic energy they carry, springs, cooldowns.
 
-import { affinity, bondFormProbability, bondBreakProbability, bondEnergy, maxBondOrder, pairKey } from './chemistry.js';
+import { affinity, bondFormProbability, bondBreakProbability, bondEnergy, maxBondOrder, pairKey, type Rng } from './chemistry';
+import type { ChemElement } from './elements';
 
-// Kinetic energy (sim units) → kJ/mol scale used by chemistry.js.
+export interface Atom {
+  id: number;
+  el: ChemElement;
+  x: number; y: number;
+  vx: number; vy: number;
+  bonds: Bond[];
+}
+
+export interface Bond {
+  a: Atom;
+  b: Atom;
+  order: number;
+  key: string;
+}
+
+export interface PointerState {
+  x: number | null;
+  y: number | null;
+  active: boolean;
+  mode: 'attract' | 'repel' | 'vortex';
+}
+
+export interface SimStats {
+  atoms: number;
+  bonds: number;
+  byElement: Record<string, number>;
+  byBondPair: Record<string, number>;
+  maxLoadRatio: number;
+  overloaded: number;
+  cap: number;
+  temperature: number;
+}
+
+export interface SimOptions {
+  width: number;
+  height: number;
+  sampleElement: () => ChemElement;
+  cap?: number;
+  temperature?: number;
+  rng?: Rng;
+}
+
+// Kinetic energy (sim units) → kJ/mol scale used by chemistry.ts.
 // Calibrated (headless probe, 2026-07-10) so the default temperature (40) puts the mean
 // free-pair energy near ~60 kJ/mol; thermal kicks scale 1/sqrt(mass) (equipartition),
 // making pair energy mass-independent.
@@ -14,14 +57,14 @@ export const ENERGY_SCALE = 30;
 // Thermal-bath energy (kJ/mol) as a function of the temperature setting. Bonded pairs
 // have their relative velocity damped by the bond itself, so raw eRel under-reads how
 // hot the bath is; break checks use max(eRel, bath). Fit: E ≈ 60 at T=40, ∝ T².
-export function bathEnergy(temperature) {
+export function bathEnergy(temperature: number): number {
   return 0.038 * temperature * temperature;
 }
 
 // High-energy capture suppression: two atoms flying past each other too fast can't be
 // captured into a bond even if activation is exceeded. Kinetics, not chemistry — so it
-// lives here, and chemistry.js's monotone activation gate stays intact.
-export function captureFactor(eRel, eBond) {
+// lives here, and chemistry.ts's monotone activation gate stays intact.
+export function captureFactor(eRel: number, eBond: number): number {
   if (eBond <= 0) return 0;
   const x = eRel / (0.35 * eBond);
   return 1 / (1 + x * x);
@@ -39,8 +82,8 @@ const BREAK_IMPULSE = 0.6;
 const ATTRACT_K = 0.055;   // strength of the affinity-scaled pair attraction
 
 // element-pair affinity cache (82×82 worst case, filled lazily)
-const affinityCache = new Map();
-function pairAffinity(ea, eb) {
+const affinityCache = new Map<string, number>();
+function pairAffinity(ea: ChemElement, eb: ChemElement): number {
   const k = pairKey(ea, eb);
   let v = affinityCache.get(k);
   if (v === undefined) { v = affinity(ea, eb); affinityCache.set(k, v); }
@@ -48,28 +91,34 @@ function pairAffinity(ea, eb) {
 }
 
 // Element covalent radius (pm) → draw/physics radius (px)
-export function drawRadius(el) {
+export function drawRadius(el: ChemElement): number {
   return 2.6 + el.radius / 28;
 }
 
-export function restLength(a, b) {
+export function restLength(a: { el: ChemElement }, b: { el: ChemElement }): number {
   return (drawRadius(a.el) + drawRadius(b.el)) * 1.15;
 }
 
-export function createSim({ width, height, sampleElement, cap = 250, temperature = 40, rng = Math.random }) {
+export type Sim = ReturnType<typeof createSim>;
+
+export function createSim({ width, height, sampleElement, cap = 250, temperature = 40, rng = Math.random }: SimOptions) {
   let W = width, H = height;
   let nextId = 1;
   let frame = 0;
-  const atoms = [];
-  const bonds = [];
-  const cooldowns = new Map(); // "idA:idB" (idA<idB) → frame when re-bonding is allowed
-  const pointer = { x: null, y: null, active: false, mode: 'attract' };
+  const atoms: Atom[] = [];
+  const bonds: Bond[] = [];
+  const cooldowns = new Map<string, number>(); // "idA:idB" (idA<idB) → frame when re-bonding is allowed
+  const pointer: PointerState = { x: null, y: null, active: false, mode: 'attract' };
 
-  const coolKey = (a, b) => (a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`);
-  const bondLoad = atom => atom.bonds.reduce((s, bd) => s + bd.order, 0);
-  const capLeft = atom => atom.el.maxBonds - bondLoad(atom);
+  const coolKey = (a: Atom, b: Atom) => (a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`);
+  const bondLoad = (atom: Atom) => atom.bonds.reduce((s, bd) => s + bd.order, 0);
+  const capLeft = (atom: Atom) => atom.el.maxBonds - bondLoad(atom);
 
-  function makeAtom(el, x, y, hot) {
+  function thermalKick(): number {
+    return sim.temperature * 0.0025;
+  }
+
+  function makeAtom(el: ChemElement, x?: number, y?: number, hot?: boolean): Atom {
     const a = Math.PI * 2 * rng();
     // thermal speed ~ temperature, scaled 1/sqrt(mass) (equipartition)
     const base = Math.max(0.2, thermalKick() * 10 / Math.sqrt(el.mass / 16));
@@ -85,17 +134,13 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     };
   }
 
-  function thermalKick() {
-    return sim.temperature * 0.0025;
-  }
-
-  function spawnTo(n) {
+  function spawnTo(n: number): number {
     const want = Math.min(n, sim.cap);
     while (atoms.length < want) atoms.push(makeAtom(sampleElement()));
     return atoms.length;
   }
 
-  function removeBond(bd, impulse = false) {
+  function removeBond(bd: Bond, impulse = false): void {
     const idx = bonds.indexOf(bd);
     if (idx !== -1) bonds.splice(idx, 1);
     bd.a.bonds = bd.a.bonds.filter(x => x !== bd);
@@ -109,7 +154,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     }
   }
 
-  function removeAtom(atom) {
+  function removeAtom(atom: Atom): void {
     for (const bd of [...atom.bonds]) removeBond(bd);
     const idx = atoms.indexOf(atom);
     if (idx !== -1) atoms.splice(idx, 1);
@@ -117,13 +162,13 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
 
   // Relative kinetic energy of a pair on the chemistry (kJ/mol) scale:
   // E = ½ μ |Δv|² · ENERGY_SCALE, μ = reduced mass.
-  function eRel(a, b) {
+  function eRel(a: Atom, b: Atom): number {
     const mu = (a.el.mass * b.el.mass) / (a.el.mass + b.el.mass);
     const dvx = a.vx - b.vx, dvy = a.vy - b.vy;
     return 0.5 * mu * (dvx * dvx + dvy * dvy) * ENERGY_SCALE;
   }
 
-  function tryForm(a, b) {
+  function tryForm(a: Atom, b: Atom): void {
     if (capLeft(a) <= 0 || capLeft(b) <= 0) return;
     const until = cooldowns.get(coolKey(a, b));
     if (until !== undefined && frame < until) return;
@@ -133,7 +178,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     const p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b))
       * captureFactor(e, bondEnergy(a.el, b.el, order)) * FORM_RATE;
     if (p > 0 && rng() < p) {
-      const bd = { a, b, order, key: pairKey(a.el, b.el) };
+      const bd: Bond = { a, b, order, key: pairKey(a.el, b.el) };
       bonds.push(bd);
       a.bonds.push(bd);
       b.bonds.push(bd);
@@ -144,16 +189,16 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     cap, temperature, atoms, bonds, pointer,
     get width() { return W; }, get height() { return H; },
 
-    resize(w, h) { W = w; H = h; },
+    resize(w: number, h: number) { W = w; H = h; },
 
-    setTemperature(t) { sim.temperature = Math.max(0, Math.min(100, t)); },
+    setTemperature(t: number) { sim.temperature = Math.max(0, Math.min(100, t)); },
 
-    setCap(n) {
+    setCap(n: number) {
       sim.cap = Math.max(1, n | 0);
       while (atoms.length > sim.cap) removeAtom(atoms[atoms.length - 1]);
     },
 
-    setPointer(p) { Object.assign(pointer, p); },
+    setPointer(p: Partial<PointerState>) { Object.assign(pointer, p); },
 
     spawnTo,
 
@@ -165,7 +210,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     },
 
     // Inject up to `count` atoms near (x,y); returns how many actually spawned (cap-guarded).
-    burst(x, y, count = 30) {
+    burst(x: number, y: number, count = 30): number {
       let added = 0;
       while (added < count && atoms.length < sim.cap) {
         const atom = makeAtom(sampleElement(), x + (rng() - 0.5) * 30, y + (rng() - 0.5) * 30, true);
@@ -184,7 +229,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
 
       // pointer field + thermal + integrate
       for (const p of atoms) {
-        if (pointer.active && pointer.x !== null) {
+        if (pointer.active && pointer.x !== null && pointer.y !== null) {
           const dx = pointer.x - p.x, dy = pointer.y - p.y;
           const d2 = dx * dx + dy * dy;
           if (d2 < POINTER_RANGE * POINTER_RANGE && d2 > 1) {
@@ -227,7 +272,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         if (p.y > H) { p.y = H; p.vy *= -1; }
       }
 
-      // bond breaking (energy-gated per chemistry.js); the bath floor keeps global
+      // bond breaking (energy-gated per chemistry.ts); the bath floor keeps global
       // temperature honest even though bond damping cools a pair's raw eRel
       const bath = bathEnergy(sim.temperature);
       for (let i = bonds.length - 1; i >= 0; i--) {
@@ -269,10 +314,10 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
       }
     },
 
-    stats() {
-      const byElement = {};
+    stats(): SimStats {
+      const byElement: Record<string, number> = {};
       for (const p of atoms) byElement[p.el.symbol] = (byElement[p.el.symbol] ?? 0) + 1;
-      const byBondPair = {};
+      const byBondPair: Record<string, number> = {};
       let maxLoadRatio = 0, overloaded = 0;
       for (const bd of bonds) byBondPair[bd.key] = (byBondPair[bd.key] ?? 0) + 1;
       for (const p of atoms) {
