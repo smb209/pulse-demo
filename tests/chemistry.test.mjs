@@ -145,6 +145,22 @@ test('break probability is monotone in energy and respects bond strength', () =>
   }
 });
 
+test('bond energy scales with order: a single N-N chain link is ~180, not 945', () => {
+  const N = el('N'), O = el('O');
+  const single = bondEnergy(N, N, 1);
+  const triple = bondEnergy(N, N, 3);
+  assert.equal(triple, 945);
+  assert.ok(single > 150 && single < 220, `N-N single ${single}`);
+  assert.ok(bondEnergy(O, O, 1) < bondEnergy(O, O, 2), 'O-O single weaker than double');
+  // and therefore hot fields can actually shed chain links:
+  assert.ok(
+    bondBreakProbability(N, N, 300, 1) > bondBreakProbability(N, N, 300, 3) * 5,
+    'order-1 N-N breaks far more readily than N≡N'
+  );
+  // omitted order defaults to full strength (backward compatible)
+  assert.equal(bondEnergy(N, N), 945);
+});
+
 test('bond orders: N2 triple, O2 double, default single', () => {
   assert.equal(maxBondOrder(el('N'), el('N')), 3);
   assert.equal(maxBondOrder(el('O'), el('O')), 2);

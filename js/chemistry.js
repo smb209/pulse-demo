@@ -54,16 +54,22 @@ export function affinity(a, b) {
   return 0.6 * match * hunger;
 }
 
-// Bond energy for any bondable pair (kJ/mol): curated value or a type-derived estimate.
-export function bondEnergy(a, b) {
+// Bond energy for a bondable pair (kJ/mol): curated value or a type-derived estimate.
+// Curated energies describe the pair's FULL bond (N≡N 945, O=O 498); a lower-order bond
+// is weaker: E(order) = E_full · (order/maxOrder)^1.5. That puts an N–N single at ~182
+// (real: ~160) and an O–O single at ~176 (real: ~146) — without it, order-1 chain links
+// inherit the triple-bond energy and hot fields accrete unbreakable N-blobs.
+export function bondEnergy(a, b, order) {
   const type = classifyBond(a, b);
   if (type === 'none') return 0;
+  const full = maxBondOrder(a, b);
+  const scale = order ? Math.pow(Math.min(order, full) / full, 1.5) : 1;
   const curated = BOND_ENERGIES[pairKey(a, b)];
-  if (curated) return curated;
+  if (curated) return curated * scale;
   const gap = Math.abs((a.en ?? 0) - (b.en ?? 0));
-  if (type === 'ionic') return 300 + 120 * (gap - IONIC_EN_GAP);
-  if (type === 'metallic') return 110;
-  return 180 + 90 * (((a.en ?? 0) + (b.en ?? 0)) / 2);
+  if (type === 'ionic') return (300 + 120 * (gap - IONIC_EN_GAP)) * scale;
+  if (type === 'metallic') return 110 * scale;
+  return (180 + 90 * (((a.en ?? 0) + (b.en ?? 0)) / 2)) * scale;
 }
 
 // --- energy gates ------------------------------------------------------
@@ -80,10 +86,11 @@ export function bondFormProbability(a, b, eRel, bondsA = 0, bondsB = 0) {
 }
 
 // P(break) per check. Monotone increasing in eRel, decreasing in bond energy —
-// N≡N (945) survives temperatures that shatter O–H (463).
-export function bondBreakProbability(a, b, eRel) {
+// N≡N (945) survives temperatures that shatter O–H (463), but a single N–N chain
+// link (order 1 of 3) breaks like the ~180 kJ/mol bond it really is.
+export function bondBreakProbability(a, b, eRel, order) {
   if (eRel <= 0) return 0;
-  return Math.exp(-bondEnergy(a, b) / eRel);
+  return Math.exp(-bondEnergy(a, b, order) / eRel);
 }
 
 // Max bond order for a pair (parallel-stroke rendering + valence bookkeeping).

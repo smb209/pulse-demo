@@ -129,10 +129,10 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     if (until !== undefined && frame < until) return;
     if (a.bonds.some(bd => bd.a === b || bd.b === b)) return; // already bonded
     const e = eRel(a, b);
+    const order = Math.min(maxBondOrder(a.el, b.el), capLeft(a), capLeft(b));
     const p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b))
-      * captureFactor(e, bondEnergy(a.el, b.el)) * FORM_RATE;
+      * captureFactor(e, bondEnergy(a.el, b.el, order)) * FORM_RATE;
     if (p > 0 && rng() < p) {
-      const order = Math.min(maxBondOrder(a.el, b.el), capLeft(a), capLeft(b));
       const bd = { a, b, order, key: pairKey(a.el, b.el) };
       bonds.push(bd);
       a.bonds.push(bd);
@@ -233,7 +233,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
       for (let i = bonds.length - 1; i >= 0; i--) {
         const bd = bonds[i];
         const e = Math.max(eRel(bd.a, bd.b), bath);
-        const p = bondBreakProbability(bd.a.el, bd.b.el, e) * BREAK_RATE * dt;
+        const p = bondBreakProbability(bd.a.el, bd.b.el, e, bd.order) * BREAK_RATE * dt;
         if (p > 0 && rng() < p) removeBond(bd, true);
       }
 
