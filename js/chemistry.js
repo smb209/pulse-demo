@@ -92,6 +92,67 @@ export function maxBondOrder(a, b) {
   return BOND_ORDERS[pairKey(a, b)] ?? 1;
 }
 
+// --- molecule recognition (slice 4) --------------------------------------
+// Connected components over the bond graph → canonical formula → known-molecule name.
+// Formula-count based: H-O-H is H₂O, H-O-O-H is H₂O₂ (different counts), so no
+// structural isomer handling is needed at this vocabulary size.
+
+const SUBSCRIPTS = '₀₁₂₃₄₅₆₇₈₉';
+function sub(n) {
+  return n === 1 ? '' : String(n).split('').map(d => SUBSCRIPTS[+d]).join('');
+}
+
+// Hill order: C first, then H, then alphabetical; no C → all alphabetical.
+export function formulaOf(counts) {
+  const syms = Object.keys(counts).sort();
+  const ordered = counts.C
+    ? ['C', ...(counts.H ? ['H'] : []), ...syms.filter(s => s !== 'C' && s !== 'H')]
+    : syms;
+  return ordered.map(s => s + sub(counts[s])).join('');
+}
+
+export const KNOWN_MOLECULES = {
+  'H₂': 'H₂', 'O₂': 'O₂', 'N₂': 'N₂', 'H₂O': 'H₂O', 'CO₂': 'CO₂', 'CH₄': 'CH₄',
+  'ClNa': 'NaCl', 'O₂Si': 'SiO₂', 'FeO': 'FeO', 'Fe₂O₃': 'Fe₂O₃', 'MgO': 'MgO',
+  'CaO': 'CaO', 'ClH': 'HCl', 'CO': 'CO', 'H₃N': 'NH₃', 'H₂O₂': 'H₂O₂', 'H₂S': 'H₂S',
+};
+
+// bonds: [{a, b, ...}] where a/b carry .el.symbol and stable identity.
+// Returns { molecules: {display → count}, components, named } — named = count of
+// components whose formula is in KNOWN_MOLECULES.
+export function analyzeMolecules(bonds) {
+  const parent = new Map();
+  const find = x => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r);
+    while (parent.get(x) !== r) { const n = parent.get(x); parent.set(x, r); x = n; }
+    return r;
+  };
+  for (const bd of bonds) {
+    if (!parent.has(bd.a)) parent.set(bd.a, bd.a);
+    if (!parent.has(bd.b)) parent.set(bd.b, bd.b);
+    const ra = find(bd.a), rb = find(bd.b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+  const comps = new Map(); // root → {sym → count}
+  for (const atom of parent.keys()) {
+    const root = find(atom);
+    let c = comps.get(root);
+    if (!c) comps.set(root, c = {});
+    c[atom.el.symbol] = (c[atom.el.symbol] ?? 0) + 1;
+  }
+  const molecules = {};
+  let named = 0;
+  for (const counts of comps.values()) {
+    const formula = formulaOf(counts);
+    const display = KNOWN_MOLECULES[formula];
+    if (display) named++;
+    const key = display ?? formula;
+    molecules[key] = (molecules[key] ?? 0) + 1;
+  }
+  return { molecules, components: comps.size, named };
+}
+
 // --- presets (atom-count fractions, %) — build plan D6 ------------------
 
 export const PRESETS = [

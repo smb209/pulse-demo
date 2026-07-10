@@ -2,7 +2,7 @@
 // this file owns the canvas, sprites, controls, and the window.__pulse validation probe.
 
 import { BY_SYMBOL } from './elements.js';
-import { PRESET_BY_ID, samplePreset } from './chemistry.js';
+import { PRESET_BY_ID, samplePreset, analyzeMolecules } from './chemistry.js';
 import { createSim, drawRadius } from './sim.js';
 
 const canvas = document.getElementById('stage');
@@ -198,6 +198,8 @@ function frame(now) {
     fpsEl.textContent = fps;
     statAtomsEl.textContent = sim.atoms.length;
     bondsEl.textContent = sim.bonds.length;
+    lastMolecules = analyzeMolecules(sim.bonds);
+    renderTicker(lastMolecules);
     frames = 0;
     fpsTimer = now;
   }
@@ -205,8 +207,26 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
+// --- molecule ticker -----------------------------------------------------------
+
+const tickerEl = document.getElementById('ticker');
+let lastMolecules = { molecules: {}, components: 0, named: 0 };
+
+function renderTicker({ molecules }) {
+  const top = Object.entries(molecules).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  if (!top.length) {
+    tickerEl.textContent = 'no molecules yet';
+    tickerEl.classList.add('empty');
+    return;
+  }
+  tickerEl.classList.remove('empty');
+  tickerEl.innerHTML = top
+    .map(([name, n]) => `<b>${name}</b><span>×${n}</span>`)
+    .join('<em>·</em>');
+}
+
 // --- validation probe (read-only) — build plan D7 -----------------------------
 
 window.__pulse = {
-  stats: () => ({ ...sim.stats(), fps, preset: currentPreset }),
+  stats: () => ({ ...sim.stats(), fps, preset: currentPreset, ...analyzeMolecules(sim.bonds) }),
 };

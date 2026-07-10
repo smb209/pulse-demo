@@ -87,6 +87,29 @@
     color: var(--text-muted);
   }
   .stat.flash { animation: capflash 0.5s ease; }
+
+  #ticker {
+    position: fixed;
+    top: calc(max(14px, env(safe-area-inset-top)) + 58px);
+    right: 18px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 0.74rem;
+    user-select: none;
+    pointer-events: none;
+  }
+  #ticker b { color: var(--accent); font-weight: 700; }
+  #ticker span { color: var(--text-muted); font-size: 0.66rem; }
+  #ticker em { color: var(--border); font-style: normal; }
+  #ticker.empty { color: var(--text-muted); font-size: 0.66rem; letter-spacing: 0.06em; }
   @keyframes capflash {
     0%, 100% { border-color: var(--border); }
     30% { border-color: var(--secondary); box-shadow: 0 0 14px rgba(218, 78, 134, 0.6); }
@@ -292,6 +315,8 @@
   <div class="stat"><b id="atoms">—</b><span>atoms</span></div>
   <div class="stat"><b id="bonds">—</b><span>bonds</span></div>
 </div>
+
+<div id="ticker" class="empty">no molecules yet</div>
 
 <div id="panel">
   <div class="group presets-wrap">
