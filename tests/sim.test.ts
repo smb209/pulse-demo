@@ -28,10 +28,10 @@ function makeSim(overrides: { seed?: number; preset?: string; cap?: number } = {
 test('atoms persist: no decay, no spontaneous removal over 600 frames', () => {
   const sim = makeSim();
   sim.respawn();
-  assert.equal(sim.atoms.length, 120);
+  assert.equal(sim.atoms.length, 102, 'respawn fills to 85% of cap (J14 headroom)');
   const ids = new Set(sim.atoms.map(a => a.id));
   for (let f = 0; f < 600; f++) sim.step();
-  assert.equal(sim.atoms.length, 120, 'count unchanged');
+  assert.equal(sim.atoms.length, 102, 'count unchanged');
   for (const a of sim.atoms) assert.ok(ids.has(a.id), 'same atoms, not replacements');
 });
 

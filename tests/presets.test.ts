@@ -22,7 +22,7 @@ test('sim respawn through each preset reproduces its mix within ±2pp (n=8000)',
       width: 1000, height: 700, cap: 8000, temperature: 40,
       sampleElement: () => samplePreset(preset.id, rng), rng,
     });
-    sim.respawn();
+    sim.spawnTo(8000);
     const s = sim.stats();
     assert.equal(s.atoms, 8000);
     for (const [sym, pct] of Object.entries(preset.mix)) {

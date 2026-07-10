@@ -54,3 +54,34 @@ None — `main` had no test harness at slice-0 cut (00-baseline).
 - Temperature slider could display a pseudo-Kelvin scale for extra chemistry flavor.
 - Bond rendering could tint by bond type (ionic vs covalent) — deliberately out of scope.
 - Spatial hashing would lift the 500-atom ceiling if ever wanted; O(n²) is fine at current scale.
+
+---
+
+# v2 results (features 1–7, unattended run, 2026-07-10)
+
+**Verdict: GREEN** — all v2 gates pass at the stack tip (`feat/element-bonds-8-molecule-chart`).
+Full narrative + every judgement call: [specs/element-bonds-v2-judgement-calls.md](../specs/element-bonds-v2-judgement-calls.md) (J1–J14).
+
+| Scenario | Result | Evidence |
+|---|---|---|
+| V-S1 toolchain | PASS — strict tsc clean, vitest 59/59, vite build 16.9 kB | every slice tip |
+| V-P6 salt ion cycle | PASS — settle 80 NaCl → hot 67⁺/67⁻ free ions (net 0, 32 NaCl) → cold 93 NaCl, 1 ion pair left | transcript eval, UI-driven + step() |
+| V-P7 injection | PASS — O chip + Burst adds exactly 30 O below cap, 0 at cap; 19 O₂ within 15 sim-s | transcript |
+| V-P8 reset | PASS — 250/40/Attract/Mix restored, outputs synced, respawn 212 atoms, preset kept | transcript |
+| V-P9 bar graph | PASS — burn field: H₂O 26% ×19 … other 16% ×12, 74 total; real ticker click | screenshot |
+| V-P10 combustion | PASS — burn outpaces air early; H₂O/CO₂/CH₄ family live | unit + live |
+| V-P11 conservation | PASS — momentum exact (<1e-9), formation +EXO·E, break −E floored | tests/physics.test.ts |
+| Mobile re-check | PASS — 375 px: no overflow, all v2 controls operable, panel fits above fold | screenshot |
+| Perf re-check | PASS — sim step 0.43 ms/frame at 425 atoms + 311 bonds + Coulomb (physics budget ≈ 2300 fps) | transcript |
+
+**Validation-driven fix (J14):** the Max-atoms slider back-filled to cap, so the population
+always equaled the cap and injection could never add an atom — latent since slice 2, exposed
+by V-P7. Cap is now a true ceiling; respawn fills to 85%. Regression test added; v1's
+G-P2.1 amended (persistence assertion unchanged, fill-to-cap expectation dropped).
+
+**Environment notes:** hidden preview tabs suspend rAF entirely → `__pulse.step()` (J13)
+drives sim time in validation; preview_click can race vite full-reloads (two stale clicks
+observed — re-issued after reload settled; not an app defect). Ghost motion-trails linger
+at 1 fps in throttled tabs (rendering artifact only).
+
+**Merge note:** stack is linear through slice 8; fast-forward `main` when ready.

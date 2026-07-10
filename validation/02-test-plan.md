@@ -106,3 +106,18 @@ Each scenario is independent given [01-pre-check](01-pre-check.md) ran cleanly. 
 **Observation:** `stats().fps` both viewports (gate: ≥30 at cap), controls respond, screenshots → `p5/`. `preview_console_logs` clean throughout.
 
 **Time budget:** ~5 min.
+
+---
+
+# v2 scenarios (features 1–7, unattended run 2026-07-10)
+
+Timed live scenarios drive real UI controls, then advance the clock with `__pulse.step(frames)`
+(J13 — hidden preview tabs suspend rAF entirely, so wall-clock waits cannot advance the sim).
+
+## V-S1. Toolchain structural — `tsc --noEmit` clean (strict) + `vitest run` green + `vite build` succeeds. Every slice tip.
+## V-P6. Salt ion cycle — salt preset via UI; settle → heat 100 → expect free Na⁺/Cl⁻ ions (net 0); cool 15 → NaCl recombines via Coulomb + barrierless recombination.
+## V-P7. Injection — select O chip (real click), Burst; exactly the burst count of O atoms appears (cap-guarded), O₂ forms from the injected oxygen.
+## V-P8. Reset — wreck cap/temp/mode/injector, click Reset; controls + outputs back to 250/40/Attract/Mix, field respawned, preset preserved.
+## V-P9. Bar graph — settled burn field, real ticker click opens the card; rows sum sensibly (top-8 + other = 100% of total), tooltip carries exact counts.
+## V-P10. Combustion — burn preset outpaces Air early (exothermic chains); H₂O/CO₂/CH₄ family appears.
+## V-P11. Physics conservation — momentum exact through break/formation energetics; formation +EXO·E, break −E floored at 0 (unit-level, tests/physics.test.ts).

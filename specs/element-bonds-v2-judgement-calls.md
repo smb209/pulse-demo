@@ -85,3 +85,12 @@ visible. The probe now exposes a synchronous `step(frames)` that advances the si
 the exact same `step()` path the render loop uses — time control, not state mutation, so
 harness fidelity is preserved (all controls are still driven through real UI events).
 Capped at 36 000 frames/call. The app itself still pauses when hidden (battery-friendly).
+
+## J14 — Cap becomes a true ceiling; respawn fills to 85% (injection was dead)
+Live validation of feature 5 exposed a latent v1 bug: the Max-atoms slider both set the cap
+AND back-filled to it (`spawnTo(cap)`), so the population always equaled the cap and every
+burst/injection was silently blocked. v1's P2 scenario read this as "cap guard works" — it
+did, but nothing could ever inject. Fix: the slider only trims (ceiling semantics, exactly
+what build-plan D5 promised); respawn fills to 85% of cap so injection always has headroom.
+v1's G-P2.1 "count stays exactly at cap after slider" gate is amended accordingly: the
+persistence assertion (no decay) is unchanged, the fill-to-cap expectation is dropped.

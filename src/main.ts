@@ -149,11 +149,11 @@ document.getElementById('modes')!.addEventListener('click', e => {
 
 const capIn = document.getElementById('cap') as HTMLInputElement;
 const tempIn = document.getElementById('temp') as HTMLInputElement;
+// Cap is a ceiling, not a set-point (D5/J14): lowering trims, raising just opens headroom.
 capIn.addEventListener('input', () => {
   const cap = +capIn.value;
   document.getElementById('capOut')!.textContent = String(cap);
   sim.setCap(cap);
-  sim.spawnTo(cap);
 });
 tempIn.addEventListener('input', () => {
   const t = +tempIn.value;

@@ -29,6 +29,18 @@ test('burst element override injects that element only, still cap-guarded (J9)',
   assert.equal(sim.stats().atoms, 150);
 });
 
+test('respawn leaves injection headroom: burst always works on a fresh field (J14)', () => {
+  const rng = mulberry32(8);
+  const sim = createSim({
+    width: 900, height: 700, cap: 200, temperature: 40,
+    sampleElement: () => samplePreset('burn', rng), rng,
+  });
+  sim.respawn();
+  assert.equal(sim.stats().atoms, 170, '85% of cap');
+  assert.ok(sim.burst(450, 350, 30, BY_SYMBOL.O) === 30, 'injection has room');
+  assert.equal(sim.stats().atoms, 200);
+});
+
 test('reactive presets behave as designed: salt makes NaCl, burn makes water/CO-family', () => {
   for (const [presetId, expectPair] of [['salt', 'Cl|Na'], ['burn', 'H|O']] as const) {
     const rng = mulberry32(17);

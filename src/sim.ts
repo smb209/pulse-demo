@@ -257,11 +257,13 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
 
     spawnTo,
 
+    // Fill to 85% of cap, not 100% — the cap is a ceiling (build plan D5), and the
+    // headroom is what makes burst/injection able to add anything at all (J14).
     respawn() {
       atoms.length = 0;
       bonds.length = 0;
       cooldowns.clear();
-      spawnTo(sim.cap);
+      spawnTo(Math.max(1, Math.floor(sim.cap * 0.85)));
     },
 
     // Inject up to `count` atoms near (x,y); returns how many actually spawned (cap-guarded).

@@ -53,3 +53,17 @@ Gates AND-ed within a scenario; run passes only if all scenario + global gates p
 ## Verdict mapping
 
 Standard two-phase-verdict states: **GREEN** (S+P all pass), **GREEN-STRUCTURAL** (S pass, P deferred pending operator authorization), **YELLOW** (documented scenario miss, operator decides), **RED** (design-level failure — e.g. P4 inverted means the energy model is wrong, stop), **BLOCKED** (pre-check halt).
+
+---
+
+# v2 gates
+
+- [ ] G-V-S1: tsc strict clean, vitest 59/59, vite build green at stack tip.
+- [ ] G-V-P6.1 hot salt: ≥ 20 free ions of each sign; net charge exactly 0.
+- [ ] G-V-P6.2 cold salt: NaCl count ≥ 2× hot NaCl count AND remaining free ions ≤ 25% of hot ion count.
+- [ ] G-V-P7: burst adds exactly its count of the selected element when below cap; 0 at cap; O₂ > 0 within 15 sim-seconds.
+- [ ] G-V-P8: after Reset — cap 250, temp 40, inject mix, Attract active, atoms = 212 (85% of cap), preset unchanged.
+- [ ] G-V-P9: chart total equals `components`; row percentages ≤ 100 and top-8+other counts sum to total.
+- [ ] G-V-P10: burn settle bonds > air settle bonds at equal (short) settle time.
+- [ ] G-V-P11: momentum deltas < 1e-9 through both energetics; energy signs correct.
+- [ ] Amended G-P2.1 (J14): hands-off count constant (no decay); the fill-to-cap expectation is dropped — cap is a ceiling.
