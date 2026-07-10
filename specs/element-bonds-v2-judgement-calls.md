@@ -94,3 +94,23 @@ did, but nothing could ever inject. Fix: the slider only trims (ceiling semantic
 what build-plan D5 promised); respawn fills to 85% of cap so injection always has headroom.
 v1's G-P2.1 "count stays exactly at cap after slider" gate is amended accordingly: the
 persistence assertion (no decay) is unchanged, the fill-to-cap expectation is dropped.
+
+## J15 — "Initialize at ½ max, oldest removed after decay time" → soft cap with rate-limited FIFO trim
+Respawn now fills to 50% of cap (was 85%). Injection always succeeds and may overshoot the
+cap; while over cap, the sim sheds the OLDEST atoms at a steady decay rate (~12 atoms/s)
+rather than instantly — the field gracefully returns to the ceiling. A hard bound of 1.5×cap
+stops unbounded spam (instant oldest-eviction beyond it; the counter flashes only when the
+hard bound truncates a burst).
+
+## J16 — Burst button = detonation (photodissociation-style)
+Burst no longer injects (canvas clicks + injector chips own injection). It now breaks EVERY
+bond simultaneously; each pair is ejected along its bond axis with the FULL bond energy as
+kinetic energy (momentum-conserving, per-event Δv capped at 2× the reaction cap for
+integrator stability), and ionic pairs cleave heterolytically — detonating salt makes an ion
+storm. Re-bond cooldown applies, so the field genuinely scatters before re-forming.
+
+## J17 — Detonation ejects with SEVERAL TIMES the bond energy (operator follow-up)
+"Should have said more than the bonding energy" — fragments now fly apart visibly:
+DETONATION_BOOST = 4× each bond's energy goes into the ejection (per-event Δv cap raised to
+8 px/frame for this path only; ordinary reaction energetics keep their 2.5 cap). Global
+damping still settles the field in ~1 s, so it's a burst, not a permanent temperature jump.

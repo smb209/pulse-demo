@@ -25,8 +25,9 @@ test('burst element override injects that element only, still cap-guarded (J9)',
   assert.equal(added, 40);
   const s = sim.stats();
   assert.equal(s.byElement.O, 40, 'exactly the injected oxygens');
-  assert.equal(sim.burst(450, 350, 40, BY_SYMBOL.O), 10, 'cap guard still applies');
-  assert.equal(sim.stats().atoms, 150);
+  // soft cap (J15): overshoot allowed up to 1.5×cap; beyond that the oldest are evicted
+  assert.equal(sim.burst(450, 350, 100, BY_SYMBOL.O), 100, 'burst always succeeds');
+  assert.equal(sim.stats().atoms, Math.ceil(150 * 1.5), 'hard bound holds');
 });
 
 test('respawn leaves injection headroom: burst always works on a fresh field (J14)', () => {
@@ -36,9 +37,9 @@ test('respawn leaves injection headroom: burst always works on a fresh field (J1
     sampleElement: () => samplePreset('burn', rng), rng,
   });
   sim.respawn();
-  assert.equal(sim.stats().atoms, 170, '85% of cap');
+  assert.equal(sim.stats().atoms, 100, 'half of cap (J15)');
   assert.ok(sim.burst(450, 350, 30, BY_SYMBOL.O) === 30, 'injection has room');
-  assert.equal(sim.stats().atoms, 200);
+  assert.equal(sim.stats().atoms, 130);
 });
 
 test('reactive presets behave as designed: salt makes NaCl, burn makes water/CO-family', () => {
@@ -48,7 +49,7 @@ test('reactive presets behave as designed: salt makes NaCl, burn makes water/CO-
       width: 900, height: 700, cap: 200, temperature: 40,
       sampleElement: () => samplePreset(presetId, rng), rng,
     });
-    sim.respawn();
+    sim.spawnTo(200); // full density: asserts chemistry, not spawn policy
     for (let f = 0; f < 2400; f++) sim.step();
     const s = sim.stats();
     assert.ok((s.byBondPair[expectPair] ?? 0) > 0, `${presetId}: expected ${expectPair}, got ${JSON.stringify(s.byBondPair)}`);
@@ -63,7 +64,7 @@ test('reactive presets are livelier than Air at equal settle time (the J8 point)
       width: 900, height: 700, cap: 200, temperature: 40,
       sampleElement: () => samplePreset(presetId, rng), rng,
     });
-    sim.respawn();
+    sim.spawnTo(200); // full density: asserts chemistry, not spawn policy
     for (let f = 0; f < 900; f++) sim.step(); // short window: measures reaction SPEED
     return sim.stats().bonds;
   };

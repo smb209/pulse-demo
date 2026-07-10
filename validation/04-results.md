@@ -84,4 +84,12 @@ drives sim time in validation; preview_click can race vite full-reloads (two sta
 observed — re-issued after reload settled; not an app defect). Ghost motion-trails linger
 at 1 fps in throttled tabs (rendering artifact only).
 
-**Merge note:** stack is linear through slice 8; fast-forward `main` when ready.
+**Merge note:** stack is linear through slice 9; fast-forward `main` when ready.
+
+## Slice 9 addendum (operator follow-up, 2026-07-10)
+
+| Scenario | Result | Evidence |
+|---|---|---|
+| V-P12 soft cap (J15) | PASS — init 125 (½ of 250); 6 click-injections → 305; decayed oldest-first to exactly 250 in 20 sim-s | transcript, UI-driven |
+| V-P13 detonation (J16) | PASS — real Burst click: 269 bonds → 0, meanSpeed 0.71 → 1.37, recovers to 265 after cooldown; momentum/charge conservation unit-tested to 1e-6 | transcript + tests/physics.test.ts |
+| Suite | 60/60, tsc strict clean | slice tip |

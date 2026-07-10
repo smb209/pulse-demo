@@ -28,10 +28,10 @@ function makeSim(overrides: { seed?: number; preset?: string; cap?: number } = {
 test('atoms persist: no decay, no spontaneous removal over 600 frames', () => {
   const sim = makeSim();
   sim.respawn();
-  assert.equal(sim.atoms.length, 102, 'respawn fills to 85% of cap (J14 headroom)');
+  assert.equal(sim.atoms.length, 60, 'respawn fills to half of cap (J15)');
   const ids = new Set(sim.atoms.map(a => a.id));
   for (let f = 0; f < 600; f++) sim.step();
-  assert.equal(sim.atoms.length, 102, 'count unchanged');
+  assert.equal(sim.atoms.length, 60, 'count unchanged');
   for (const a of sim.atoms) assert.ok(ids.has(a.id), 'same atoms, not replacements');
 });
 
@@ -43,18 +43,21 @@ test('spawnTo never exceeds cap', () => {
   assert.equal(sim.atoms.length, 120);
 });
 
-test('burst below cap adds exactly what fits; at cap adds zero', () => {
+test('soft cap: burst overshoots, then the OLDEST atoms decay back to cap (J15)', () => {
   const sim = makeSim();
   sim.spawnTo(110);
-  assert.equal(sim.burst(500, 350, 30), 10, 'only 10 slots left');
-  assert.equal(sim.atoms.length, 120);
-  assert.equal(sim.burst(500, 350, 30), 0, 'at cap');
-  assert.equal(sim.atoms.length, 120);
+  const oldestIds = sim.atoms.slice(0, 20).map(a => a.id);
+  assert.equal(sim.burst(500, 350, 30), 30, 'overshoot allowed');
+  assert.equal(sim.atoms.length, 140);
+  for (let f = 0; f < 220; f++) sim.step(); // decay ~1 atom / 5 frames while over cap
+  assert.equal(sim.atoms.length, 120, 'decayed back to cap');
+  const alive = new Set(sim.atoms.map(a => a.id));
+  for (const id of oldestIds) assert.ok(!alive.has(id), `oldest atom ${id} evicted first`);
 });
 
 test('setCap trims atoms and leaves no dangling bonds', () => {
   const sim = makeSim();
-  sim.respawn();
+  sim.spawnTo(120); // full density: asserts trim behavior, not spawn policy
   for (let f = 0; f < 400; f++) sim.step(); // let bonds form
   assert.ok(sim.bonds.length > 0, 'bonds formed during warmup');
   sim.setCap(60);
@@ -72,7 +75,7 @@ test('setCap trims atoms and leaves no dangling bonds', () => {
 
 test('valence never exceeded, no duplicate pair bonds (1200 frames, seawater)', () => {
   const sim = makeSim({ seed: 23 });
-  sim.respawn();
+  sim.spawnTo(120);
   for (let f = 0; f < 1200; f++) {
     sim.step();
     if (f % 200 === 0) {
@@ -92,7 +95,7 @@ test('valence never exceeded, no duplicate pair bonds (1200 frames, seawater)', 
 
 test('bonds actually form at moderate temperature and correct pairs appear', () => {
   const sim = makeSim({ seed: 5 });
-  sim.respawn();
+  sim.spawnTo(120);
   for (let f = 0; f < 2400; f++) sim.step();
   const s = sim.stats();
   assert.ok(s.bonds > 10, `expected a lively field, got ${s.bonds} bonds`);

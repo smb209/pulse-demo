@@ -257,20 +257,26 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
 
     spawnTo,
 
-    // Fill to 85% of cap, not 100% — the cap is a ceiling (build plan D5), and the
-    // headroom is what makes burst/injection able to add anything at all (J14).
+    // Fill to half of cap (J15) — the other half is the player's injection budget.
     respawn() {
       atoms.length = 0;
       bonds.length = 0;
       cooldowns.clear();
-      spawnTo(Math.max(1, Math.floor(sim.cap * 0.85)));
+      spawnTo(Math.max(1, Math.floor(sim.cap * 0.5)));
     },
 
-    // Inject up to `count` atoms near (x,y); returns how many actually spawned (cap-guarded).
+    // Inject `count` atoms near (x,y); returns how many actually spawned.
     // `element` overrides the sampler — the injector feature (J9) drops a pure element.
+    // Soft cap (J15): injection may overshoot the cap (step() decays the oldest atoms back
+    // down); the 1.5×cap hard bound evicts the oldest immediately so spam stays bounded.
     burst(x: number, y: number, count = 30, element?: ChemElement): number {
+      const hardMax = Math.ceil(sim.cap * 1.5);
       let added = 0;
-      while (added < count && atoms.length < sim.cap) {
+      while (added < count) {
+        if (atoms.length >= hardMax) {
+          if (atoms.length > 0 && added < count) removeAtom(atoms[0]);
+          else break;
+        }
         const atom = makeAtom(element ?? sampleElement(), x + (rng() - 0.5) * 30, y + (rng() - 0.5) * 30, true);
         const ang = rng() * Math.PI * 2, sp = 2 + rng() * 4;
         atom.vx = Math.cos(ang) * sp; atom.vy = Math.sin(ang) * sp;
@@ -278,6 +284,29 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         added++;
       }
       return added;
+    },
+
+    // Detonation (J16/J17): break every bond at once — a flash depositing several times
+    // each bond's energy: the dissociation cost is paid (endothermic step inside
+    // removeBond) and DETONATION_BOOST× the bond energy ejects the pair along its bond
+    // axis (momentum-conserving), so fragments visibly fly apart before damping settles
+    // them. Ionic pairs cleave heterolytically. Returns the number of bonds broken.
+    detonate(): number {
+      const DETONATION_BOOST = 4;
+      const DETONATION_VCAP = 8;
+      const broken = bonds.length;
+      for (const bd of [...bonds]) {
+        const eBond = bondEnergy(bd.a.el, bd.b.el, bd.order);
+        removeBond(bd, true); // endothermic bookkeeping + heterolytic charges + cooldown
+        const dx = bd.b.x - bd.a.x, dy = bd.b.y - bd.a.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const mu = (bd.a.el.mass * bd.b.el.mass) / (bd.a.el.mass + bd.b.el.mass);
+        const dv = Math.min(Math.sqrt(2 * (eBond * DETONATION_BOOST / ENERGY_SCALE) / mu), DETONATION_VCAP);
+        const jx = (dx / d) * dv * mu, jy = (dy / d) * dv * mu;
+        bd.b.vx += jx / bd.b.el.mass; bd.b.vy += jy / bd.b.el.mass;
+        bd.a.vx -= jx / bd.a.el.mass; bd.a.vy -= jy / bd.a.el.mass;
+      }
+      return broken;
     },
 
     step(dtMs = 16.67) {
@@ -383,6 +412,12 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
             }
           }
         }
+      }
+
+      // soft-cap decay (J15): while over cap, shed the OLDEST atom every few frames
+      // (~12 atoms/s) so injected overshoot drains gracefully instead of instantly
+      if (atoms.length > sim.cap && frame % 5 === 0) {
+        removeAtom(atoms[0]);
       }
 
       // occasional cooldown GC

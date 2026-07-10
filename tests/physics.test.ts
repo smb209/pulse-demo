@@ -114,7 +114,7 @@ test('salt-like field: heat creates ion pairs, net charge stays zero, valence ho
   const rng = mulberry32(13);
   const mix = () => (rng() < 0.5 ? el('Na') : el('Cl'));
   const sim = createSim({ width: 900, height: 700, cap: 150, temperature: 40, sampleElement: mix, rng });
-  sim.respawn();
+  sim.spawnTo(150); // full density: this test asserts chemistry, not spawn policy
   for (let f = 0; f < 1800; f++) sim.step(); // settle: NaCl forms
   assert.ok(sim.stats().byBondPair['Cl|Na'] > 0, 'salt formed');
   sim.setTemperature(100);
@@ -126,13 +126,36 @@ test('salt-like field: heat creates ion pairs, net charge stays zero, valence ho
   assert.ok(hot.meanSpeed < 30, `speeds bounded, got ${hot.meanSpeed}`);
 });
 
+test('detonate: breaks every bond, conserves momentum, ejects with bond energy (J16)', () => {
+  const rng = mulberry32(19);
+  const sim = createSim({
+    width: 900, height: 700, cap: 150, temperature: 40,
+    sampleElement: () => samplePreset('seawater', rng), rng,
+  });
+  sim.spawnTo(150);
+  for (let f = 0; f < 1800; f++) sim.step();
+  const bondsBefore = sim.bonds.length;
+  assert.ok(bondsBefore > 20, `field settled with bonds, got ${bondsBefore}`);
+  const speedBefore = sim.stats().meanSpeed;
+  const pBefore = momentum(...sim.atoms);
+  const broken = sim.detonate();
+  const pAfter = momentum(...sim.atoms);
+  assert.equal(broken, bondsBefore, 'every bond broken');
+  assert.equal(sim.bonds.length, 0);
+  assert.ok(Math.abs(pAfter.x - pBefore.x) < 1e-6 && Math.abs(pAfter.y - pBefore.y) < 1e-6, 'momentum conserved');
+  assert.ok(sim.stats().meanSpeed > speedBefore * 2.5, `fragments FLY apart (J17): ${speedBefore} → ${sim.stats().meanSpeed}`);
+  assert.equal(sim.stats().ions.net, 0, 'heterolytic charges balance');
+  for (let f = 0; f < 900; f++) sim.step(); // past the re-bond cooldown
+  assert.ok(sim.bonds.length > 0, 'field recovers after the cooldown');
+});
+
 test('regime stability: seawater at default temp stays in the v1 envelope despite exothermic kicks', () => {
   const rng = mulberry32(7);
   const sim = createSim({
     width: 1200, height: 800, cap: 250, temperature: 40,
     sampleElement: () => samplePreset('seawater', rng), rng,
   });
-  sim.respawn();
+  sim.spawnTo(250); // full density: this test asserts chemistry, not spawn policy
   for (let f = 0; f < 3600; f++) sim.step();
   const s = sim.stats();
   assert.ok(s.bonds > 60 && s.bonds < 280, `settle bonds in envelope, got ${s.bonds}`);
@@ -144,7 +167,7 @@ test('exothermic chain: H/O mix at moderate temp ignites (bond count grows fast)
   const rng = mulberry32(3);
   const mix = () => (rng() < 0.66 ? el('H') : el('O'));
   const sim = createSim({ width: 900, height: 700, cap: 200, temperature: 40, sampleElement: mix, rng });
-  sim.respawn();
+  sim.spawnTo(200); // full density: this test asserts chemistry, not spawn policy
   for (let f = 0; f < 1200; f++) sim.step();
   const s = sim.stats();
   assert.ok(s.bonds > 40, `combustion products formed, got ${s.bonds}`);

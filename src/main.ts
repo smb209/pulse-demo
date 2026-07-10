@@ -97,7 +97,7 @@ window.addEventListener('pointermove', setPointer);
 window.addEventListener('pointerdown', e => {
   if ((e.target as Element).closest('#panel')) return;
   setPointer(e);
-  if (sim.burst(e.clientX, e.clientY, 30, injectElement()) === 0) flashAtCap();
+  if (sim.burst(e.clientX, e.clientY, 30, injectElement()) < 30) flashAtCap();
 });
 window.addEventListener('pointerleave', () => sim.setPointer({ active: false }));
 window.addEventListener('touchmove', e => {
@@ -160,8 +160,9 @@ tempIn.addEventListener('input', () => {
   document.getElementById('tempOut')!.textContent = String(t);
   sim.setTemperature(t);
 });
+// Burst = detonation (J16): snap every bond, eject fragments with the bond energy.
 document.getElementById('burstBtn')!.addEventListener('click', () => {
-  if (sim.burst(W / 2, H / 2, 30, injectElement()) === 0) flashAtCap();
+  sim.detonate();
 });
 
 // --- injector chips (J9) ------------------------------------------------------
