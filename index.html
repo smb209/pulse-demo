@@ -305,13 +305,19 @@
   #histBars { display: flex; align-items: flex-end; gap: 2px; height: 46px; }
   #histBars i { flex: 1; background: var(--primary); border-radius: 2px 2px 0 0; min-height: 1px; transition: height 0.25s ease; }
   #histMeta { font-size: 0.58rem; color: var(--text-muted); letter-spacing: 0.04em; }
+  /* The readout HUD and the molecule chart share the right edge on desktop (and can't fit
+     side by side on a phone), so they never show at once — while the chart is open the HUD
+     steps aside, no overlap. */
+  body.chart-open #gasHUD { display: none; }
   /* Desktop: the control panel owns the left edge, so the readout HUD lives on the right.
      Mobile: the panel is docked to the bottom, so the HUD stays top-left. */
   @media (min-width: 721px) {
     #gasHUD { left: auto; right: 18px; top: calc(max(14px, env(safe-area-inset-top)) + 150px); }
   }
   @media (max-width: 720px) {
-    #gasHUD { width: min(170px, calc(100vw - 36px)); }
+    #gasHUD { width: min(168px, calc(100vw - 36px)); gap: 9px; padding: 11px 12px; }
+    /* declutter the top: the subtitle was colliding with the stat chips */
+    header p { display: none; }
   }
 
   .group label {

@@ -422,6 +422,8 @@ tickerEl.addEventListener('click', () => {
   const open = chartEl.hidden === true;
   chartEl.hidden = !open;
   tickerEl.classList.toggle('open', open);
+  // on mobile the gas HUD yields to the molecule chart (see .chart-open CSS)
+  document.body.classList.toggle('chart-open', open);
 });
 
 function renderTicker(report: MoleculeReport): void {
