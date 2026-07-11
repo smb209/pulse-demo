@@ -9,6 +9,11 @@ declare global {
   interface Window { __pulse: { stats: () => object; step: (frames?: number) => number } }
 }
 
+const GAME_MODE = new URLSearchParams(location.search).has('game');
+
+// The sandbox owns the canvas and its own render loop, so it must NOT run in game mode
+// (the game boots its own loop on the same canvas). Wrapped so ?game=1 can skip it.
+function initSandbox(): void {
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d')!;
 
@@ -534,3 +539,11 @@ window.__pulse = {
 
 // Initialize the mobile readout view (after renderChart + its DOM refs exist).
 setView(mobileView);
+}
+
+if (GAME_MODE) {
+  document.body.classList.add('game');
+  import('./game/game').then(m => m.initGame()).catch(err => console.error('Game failed to load', err));
+} else {
+  initSandbox();
+}

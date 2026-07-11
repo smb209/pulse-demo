@@ -168,6 +168,14 @@ export function restLength(a: { el: ChemElement }, b: { el: ChemElement }): numb
   return (drawRadius(a.el) + drawRadius(b.el)) * 1.15;
 }
 
+// A pluggable environment lets an outer layer (the game mode) inject extra per-atom forces
+// (placed tools/fields) and locally boost bond formation (catalysts) without the core sim
+// knowing anything about tools. Both hooks are optional; default behaviour is unchanged.
+export interface SimEnvironment {
+  force?(a: Atom, dt: number): void;
+  formBoost?(x: number, y: number): number;
+}
+
 export type Sim = ReturnType<typeof createSim>;
 
 export function createSim({ width, height, sampleElement, cap = 250, temperature = 40, rng = Math.random }: SimOptions) {
@@ -182,6 +190,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
   const phys: PhysicsFlags = { collisions: false, thermostat: false, gravity: false };
   let wallImpulse = 0;   // momentum delivered to walls during the current frame
   let pressureEMA = 0;   // smoothed wall force-per-length
+  let environment: SimEnvironment | null = null;
 
   const coolKey = (a: Atom, b: Atom) => (a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`);
   const bonded = (a: Atom, b: Atom) => a.bonds.some(bd => bd.a === b || bd.b === b);
@@ -253,8 +262,9 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     const e = eRel(a, b);
     const order = Math.min(maxBondOrder(a.el, b.el), capLeft(a), capLeft(b));
     const eBond = bondEnergy(a.el, b.el, order);
-    const p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b), a.charge, b.charge)
+    let p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b), a.charge, b.charge)
       * captureFactor(e, eBond) * FORM_RATE;
+    if (environment?.formBoost) p *= environment.formBoost((a.x + b.x) / 2, (a.y + b.y) / 2); // catalysts
     if (p > 0 && rng() < p) {
       const bd: Bond = { a, b, order, key: pairKey(a.el, b.el) };
       bonds.push(bd);
@@ -282,6 +292,16 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
 
     phys,
     setPhysics(p: Partial<PhysicsFlags>) { Object.assign(phys, p); },
+
+    // Game-mode extension surface: an environment hook + spawn/despawn primitives.
+    setEnvironment(e: SimEnvironment | null) { environment = e; },
+    spawnAtom(el: ChemElement, x: number, y: number, vx = 0, vy = 0): Atom | null {
+      if (atoms.length >= Math.ceil(sim.cap * 1.5)) return null;
+      const a: Atom = { id: nextId++, el, x, y, vx, vy, charge: 0, bonds: [] };
+      atoms.push(a);
+      return a;
+    },
+    despawn(atom: Atom) { removeAtom(atom); },
 
     spawnTo,
 
@@ -360,6 +380,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         p.vx += (rng() - 0.5) * 2 * jm * dt;
         p.vy += (rng() - 0.5) * 2 * jm * dt;
         if (phys.gravity) p.vy += GRAVITY * dt; // equal accel — heavier gases settle lower
+        if (environment?.force) environment.force(p, dt); // game-mode tools/fields
       }
 
       // bond springs

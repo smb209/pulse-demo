@@ -1,0 +1,76 @@
+// Data model for the "Reaction Foundry" game mode. Everything here is designed to be
+// edited/extended by data: add a tool → add a ToolType; add a level → add a LevelDef;
+// add an objective kind → extend ObjectiveDef + the evaluator; elements/reactions come
+// straight from elements.ts / chemistry.ts.
+
+import type { Atom } from '../sim';
+
+// A placed tool on the board (canvas px coordinates).
+export interface ToolInstance {
+  type: string;      // key into TOOL_TYPES
+  x: number;
+  y: number;
+  radius: number;
+  strength: number;
+  angle: number;     // radians, for directional tools
+  color: string;
+  fixed: boolean;    // preplaced by the level, not movable/removable
+}
+
+// A tool *behaviour*. Register one to add a new tool to every level that lists it.
+export interface ToolType {
+  id: string;
+  name: string;
+  color: string;
+  blurb: string;
+  defaults: { radius: number; strength: number; angle?: number };
+  // extra per-atom force (mutate a.vx/a.vy). Optional.
+  force?(t: ToolInstance, a: Atom, dt: number): void;
+  // multiplier on bond-formation probability at a point (catalysts). Optional; default 1.
+  formBoost?(t: ToolInstance, x: number, y: number): number;
+  // draw the tool at its canvas position.
+  draw(ctx: CanvasRenderingContext2D, t: ToolInstance, selected: boolean): void;
+}
+
+// --- level data (board coords are fractions 0..1 → resolution independent) ---
+
+export interface EmitterDef {
+  element: string;   // symbol, resolved via BY_SYMBOL
+  x: number; y: number;
+  angle: number;     // emission direction (radians)
+  rate: number;      // atoms per second
+  speed: number;     // initial speed
+  spread?: number;   // angular jitter (radians)
+}
+
+export interface ZoneDef {
+  id: string;
+  x: number; y: number; w: number; h: number;
+  label?: string;
+}
+
+export interface PlacedToolDef { type: string; x: number; y: number; angle?: number; fixed?: boolean; }
+
+export interface ObjectiveDef {
+  kind: 'collect';
+  formula: string;   // ascii Hill formula, e.g. 'H2O' (subscripts normalised on compare)
+  count: number;
+}
+
+export interface PaletteEntry { type: string; limit: number; }
+
+export interface LevelDef {
+  id: string;
+  name: string;
+  blurb: string;
+  board?: { w: number; h: number };  // fixed logical size (default 960×600), letterboxed
+  cap: number;
+  temperature: number;
+  collisions?: boolean;
+  emitters: EmitterDef[];
+  zones: ZoneDef[];              // collectors
+  preplaced?: PlacedToolDef[];
+  palette: PaletteEntry[];       // tools the player may place + how many
+  objective: ObjectiveDef;
+  par: { tools: number; seconds: number };  // for the star rating
+}
