@@ -292,6 +292,7 @@
     pointer-events: none;
   }
   #gasHUD .hud-sec { display: flex; flex-direction: column; gap: 6px; }
+  #gasHUD .hud-sec[hidden] { display: none; } /* desktop flag-driven hiding (beats .hud-sec) */
   #gasHUD .hud-title {
     font-size: 0.6rem;
     text-transform: uppercase;
@@ -514,6 +515,60 @@
     pointer-events: none;
   }
   @media (max-width: 720px) { #hint { display: none; } }
+
+  /* Readout cycler pill — mobile only. Steps through one readout at a time. */
+  #viewCycle {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top));
+    right: 18px;
+    z-index: 11;
+    display: none; /* revealed on mobile */
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 9px 15px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #viewCycle:active { transform: scale(0.96); }
+  #viewCycle .vc-arrow { color: var(--primary); font-size: 0.68rem; }
+  #viewCycle.off { color: var(--text-muted); }
+  #viewCycle.off .vc-arrow { color: var(--text-muted); }
+
+  @media (max-width: 720px) {
+    #viewCycle { display: inline-flex; }
+    /* the cycler owns readouts: hide them all, hide the display-only physics toggles */
+    #stats, #ticker, #molechart, #gasHUD { display: none; }
+    #physics [data-flag="pressure"],
+    #physics [data-flag="speeds"],
+    #physics [data-flag="tracer"] { display: none; }
+    /* readouts dock to a single consistent top-left zone */
+    #stats { left: 10px; right: auto; top: calc(max(14px, env(safe-area-inset-top)) + 60px); }
+    #molechart { left: 10px; right: auto; top: calc(max(14px, env(safe-area-inset-top)) + 60px); }
+    #gasHUD { left: 10px; right: auto; top: calc(max(14px, env(safe-area-inset-top)) + 60px); }
+    /* reveal only the active view */
+    body[data-view="stats"] #stats { display: flex; }
+    body[data-view="molecules"] #molechart { display: block; }
+    body[data-view="gas"] #gasHUD,
+    body[data-view="speeds"] #gasHUD,
+    body[data-view="diffusion"] #gasHUD { display: flex; }
+    body[data-view="gas"] #hudSpeeds, body[data-view="gas"] #hudTracer,
+    body[data-view="speeds"] #hudGas, body[data-view="speeds"] #hudTracer,
+    body[data-view="diffusion"] #hudGas, body[data-view="diffusion"] #hudSpeeds { display: none; }
+    body[data-view="gas"] #hudGas,
+    body[data-view="speeds"] #hudSpeeds,
+    body[data-view="diffusion"] #hudTracer { display: flex; }
+  }
 </style>
 </head>
 <body>
@@ -529,6 +584,11 @@
   <div class="stat"><b id="atoms">—</b><span>atoms</span></div>
   <div class="stat"><b id="bonds">—</b><span>bonds</span></div>
 </div>
+
+<button id="viewCycle" type="button" title="Tap to cycle the on-screen readout">
+  <span id="viewCycleLabel">Stats</span>
+  <span class="vc-arrow" aria-hidden="true">▸</span>
+</button>
 
 <div id="ticker" class="empty" title="Click for the molecule breakdown">no molecules yet</div>
 

@@ -239,14 +239,22 @@ const hudSpeeds = document.getElementById('hudSpeeds')!;
 const hudTracer = document.getElementById('hudTracer')!;
 const physBtns = document.getElementById('physics')!;
 
+const isMobile = (): boolean => window.matchMedia('(max-width: 720px)').matches;
+
 function setText(id: string, t: string): void { const el = document.getElementById(id); if (el) el.textContent = t; }
 
 function applyFlags(): void {
   sim.setPhysics({ collisions: flags.collisions, thermostat: flags.thermostat, gravity: flags.gravity });
-  hudGas.hidden = !flags.pressure;
-  hudSpeeds.hidden = !flags.speeds;
-  hudTracer.hidden = !flags.tracer;
-  gasHUD.hidden = !(flags.pressure || flags.speeds || flags.tracer);
+  if (isMobile()) {
+    // Mobile: the cycler + CSS own readout visibility, so keep the sections un-hidden
+    // (the `hidden` attribute is a desktop-flag concept and would fight the view rules).
+    hudGas.hidden = hudSpeeds.hidden = hudTracer.hidden = gasHUD.hidden = false;
+  } else {
+    hudGas.hidden = !flags.pressure;
+    hudSpeeds.hidden = !flags.speeds;
+    hudTracer.hidden = !flags.tracer;
+    gasHUD.hidden = !(flags.pressure || flags.speeds || flags.tracer);
+  }
   physBtns.querySelectorAll<HTMLButtonElement>('button').forEach(b =>
     b.classList.toggle('active', !!flags[b.dataset.flag as FlagName]));
 }
@@ -268,11 +276,30 @@ const histBars: HTMLElement[] = [];
 let tracerLightSym: string | null = null;
 let tracerHeavySym: string | null = null;
 
+// --- mobile readout cycler ---------------------------------------------------
+// Every readout at once is too busy on a phone, so one pill cycles through them one
+// at a time. Desktop keeps its roomy multi-panel layout (driven by the flags above).
+const MOBILE_VIEWS = ['stats', 'molecules', 'gas', 'speeds', 'diffusion', 'off'] as const;
+type ViewName = typeof MOBILE_VIEWS[number];
+const VIEW_LABEL: Record<ViewName, string> = {
+  stats: 'Stats', molecules: 'Molecules', gas: 'Gas', speeds: 'Speeds', diffusion: 'Diffusion', off: 'Hidden',
+};
+const VIEW_KEY = 'pulse.view';
+let mobileView: ViewName = ((): ViewName => {
+  const v = localStorage.getItem(VIEW_KEY) as ViewName;
+  return (MOBILE_VIEWS as readonly string[]).includes(v) ? v : 'stats';
+})();
+
 function updateHUD(): void {
-  if (gasHUD.hidden) return;
+  const mob = isMobile();
+  const wantGas = mob ? mobileView === 'gas' : flags.pressure;
+  const wantSpeeds = mob ? mobileView === 'speeds' : flags.speeds;
+  const wantDiffusion = mob ? mobileView === 'diffusion' : flags.tracer;
+  const wantMolecules = mob && mobileView === 'molecules';
+  if (!wantGas && !wantSpeeds && !wantDiffusion && !wantMolecules) return;
   const list = sim.atoms;
 
-  if (flags.pressure) {
+  if (wantGas) {
     const s = sim.stats();
     const kT = s.meanKE; // 2D equipartition: ⟨KE⟩ = kT
     const Z = (kT > 1e-9 && s.atoms > 0) ? (s.pressure * s.area) / (s.atoms * kT) : 0;
@@ -284,7 +311,7 @@ function updateHUD(): void {
     zEl.classList.toggle('warn', Z !== 0 && Math.abs(Z - 1) > 0.3);
   }
 
-  if (flags.speeds) {
+  if (wantSpeeds) {
     if (!histBars.length) for (let i = 0; i < HIST_BINS; i++) { const el = document.createElement('i'); histBarsEl.appendChild(el); histBars.push(el); }
     let maxV = 0.001;
     for (const p of list) { const v = Math.hypot(p.vx, p.vy); if (v > maxV) maxV = v; }
@@ -295,7 +322,7 @@ function updateHUD(): void {
     bins.forEach((c, i) => { histBars[i].style.height = `${Math.round(c / maxBin * 100)}%`; });
   }
 
-  if (flags.tracer) {
+  if (wantDiffusion) {
     const per = new Map<string, { n: number; v: number; m: number }>();
     for (const p of list) {
       let e = per.get(p.el.symbol);
@@ -322,7 +349,31 @@ function updateHUD(): void {
       setText('tracerRatio', 'inject 2+ species');
     }
   }
+
+  if (wantMolecules) renderChart(analyzeMolecules(sim.bonds));
 }
+
+const viewCycle = document.getElementById('viewCycle')!;
+const viewCycleLabel = document.getElementById('viewCycleLabel')!;
+
+function setView(v: ViewName): void {
+  mobileView = v;
+  document.body.dataset.view = v;
+  viewCycleLabel.textContent = VIEW_LABEL[v];
+  viewCycle.classList.toggle('off', v === 'off');
+  // drive the molecule chart's render gate from the view on mobile
+  (document.getElementById('molechart') as HTMLElement).hidden = !(v === 'molecules');
+  localStorage.setItem(VIEW_KEY, v);
+  updateHUD();
+}
+
+viewCycle.addEventListener('click', () => {
+  const i = MOBILE_VIEWS.indexOf(mobileView);
+  setView(MOBILE_VIEWS[(i + 1) % MOBILE_VIEWS.length]);
+});
+
+// tracer rings follow the tracer flag on desktop, the Diffusion view on mobile
+const tracerRingsActive = (): boolean => (isMobile() ? mobileView === 'diffusion' : flags.tracer);
 
 // --- render loop -------------------------------------------------------------
 
@@ -383,7 +434,7 @@ function frame(now: number): void {
 
   // diffusion tracer: ring the lightest (cyan) and heaviest (amber) species so their
   // different diffusion rates (Graham's law) are visible.
-  if (flags.tracer && (tracerLightSym || tracerHeavySym)) {
+  if (tracerRingsActive() && (tracerLightSym || tracerHeavySym)) {
     ctx.lineWidth = 1.7;
     for (const p of sim.atoms) {
       const color = p.el.symbol === tracerLightSym ? '#44D4E4'
@@ -480,3 +531,6 @@ window.__pulse = {
     return n;
   },
 };
+
+// Initialize the mobile readout view (after renderChart + its DOM refs exist).
+setView(mobileView);
