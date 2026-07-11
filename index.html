@@ -225,6 +225,31 @@
     #panel .modes { flex: 1 1 100%; }
   }
 
+  /* Collapsible controls — reclaim screen space (esp. on mobile) */
+  .panel-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 0.66rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: color 0.18s ease, border-color 0.18s ease;
+  }
+  .panel-toggle:hover { color: var(--text); border-color: var(--primary); }
+  .panel-toggle .pt-chev { font-size: 0.62rem; transition: transform 0.2s ease; }
+  #panel.collapsed .panel-toggle .pt-chev { transform: rotate(180deg); }
+  #panel.collapsed { gap: 0; }
+  #panel.collapsed > :not(.panel-toggle) { display: none; }
+
   .group label {
     display: flex;
     justify-content: space-between;
@@ -442,6 +467,10 @@
 </div>
 
 <div id="panel">
+  <button id="panelToggle" class="panel-toggle" type="button" aria-controls="panel" aria-expanded="true" title="Collapse controls">
+    <span>Controls</span>
+    <span class="pt-chev" aria-hidden="true">▾</span>
+  </button>
   <div class="group presets-wrap">
     <label>Field · <span id="legendTitle"></span></label>
     <div class="presets" id="presets">

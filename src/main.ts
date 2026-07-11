@@ -194,6 +194,31 @@ document.getElementById('resetBtn')!.addEventListener('click', () => {
   sim.respawn();
 });
 
+// --- collapsible control panel (mobile space-saver) --------------------------
+
+const panelEl = document.getElementById('panel')!;
+const panelToggle = document.getElementById('panelToggle')!;
+const COLLAPSE_KEY = 'pulse.controls.collapsed';
+
+function setPanelCollapsed(collapsed: boolean): void {
+  panelEl.classList.toggle('collapsed', collapsed);
+  panelToggle.setAttribute('aria-expanded', String(!collapsed));
+  panelToggle.title = collapsed ? 'Expand controls' : 'Collapse controls';
+}
+
+// Default collapsed on narrow (mobile) viewports so the field is usable on first
+// load; remember the operator's choice thereafter.
+const storedCollapsed = localStorage.getItem(COLLAPSE_KEY);
+setPanelCollapsed(storedCollapsed === null
+  ? window.matchMedia('(max-width: 720px)').matches
+  : storedCollapsed === '1');
+
+panelToggle.addEventListener('click', () => {
+  const collapsed = !panelEl.classList.contains('collapsed');
+  setPanelCollapsed(collapsed);
+  localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+});
+
 // --- render loop -------------------------------------------------------------
 
 const fpsEl = document.getElementById('fps')!;
