@@ -219,6 +219,111 @@ panelToggle.addEventListener('click', () => {
   localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
 });
 
+// --- gas-physics + readout toggles -------------------------------------------
+// Three flags drive the sim (collisions/thermostat/gravity); three drive read-only
+// overlays (pressure HUD, speed histogram, diffusion tracer). Choices persist.
+
+type FlagName = 'collisions' | 'thermostat' | 'gravity' | 'pressure' | 'speeds' | 'tracer';
+const PHYS_KEY = 'pulse.phys';
+const flagDefaults: Record<FlagName, boolean> = {
+  collisions: true, thermostat: false, gravity: false, pressure: false, speeds: false, tracer: false,
+};
+const flags: Record<FlagName, boolean> = (() => {
+  try { return { ...flagDefaults, ...JSON.parse(localStorage.getItem(PHYS_KEY) || '{}') }; }
+  catch { return { ...flagDefaults }; }
+})();
+
+const gasHUD = document.getElementById('gasHUD')!;
+const hudGas = document.getElementById('hudGas')!;
+const hudSpeeds = document.getElementById('hudSpeeds')!;
+const hudTracer = document.getElementById('hudTracer')!;
+const physBtns = document.getElementById('physics')!;
+
+function setText(id: string, t: string): void { const el = document.getElementById(id); if (el) el.textContent = t; }
+
+function applyFlags(): void {
+  sim.setPhysics({ collisions: flags.collisions, thermostat: flags.thermostat, gravity: flags.gravity });
+  hudGas.hidden = !flags.pressure;
+  hudSpeeds.hidden = !flags.speeds;
+  hudTracer.hidden = !flags.tracer;
+  gasHUD.hidden = !(flags.pressure || flags.speeds || flags.tracer);
+  physBtns.querySelectorAll<HTMLButtonElement>('button').forEach(b =>
+    b.classList.toggle('active', !!flags[b.dataset.flag as FlagName]));
+}
+applyFlags();
+
+physBtns.addEventListener('click', e => {
+  const btn = (e.target as Element).closest('button');
+  if (!btn) return;
+  const f = btn.dataset.flag as FlagName;
+  flags[f] = !flags[f];
+  localStorage.setItem(PHYS_KEY, JSON.stringify(flags));
+  applyFlags();
+});
+
+// Overlay state updated on the 500ms HUD tick; the per-frame draw reads the tracer syms.
+const HIST_BINS = 14;
+const histBarsEl = document.getElementById('histBars')!;
+const histBars: HTMLElement[] = [];
+let tracerLightSym: string | null = null;
+let tracerHeavySym: string | null = null;
+
+function updateHUD(): void {
+  if (gasHUD.hidden) return;
+  const list = sim.atoms;
+
+  if (flags.pressure) {
+    const s = sim.stats();
+    const kT = s.meanKE; // 2D equipartition: ⟨KE⟩ = kT
+    const Z = (kT > 1e-9 && s.atoms > 0) ? (s.pressure * s.area) / (s.atoms * kT) : 0;
+    setText('hudT', kT.toFixed(1));
+    setText('hudP', (s.pressure * 1000).toFixed(2)); // scaled to readable arbitrary units
+    setText('hudN', String(s.atoms));
+    const zEl = document.getElementById('hudZ')!;
+    zEl.textContent = Z ? Z.toFixed(2) : '—';
+    zEl.classList.toggle('warn', Z !== 0 && Math.abs(Z - 1) > 0.3);
+  }
+
+  if (flags.speeds) {
+    if (!histBars.length) for (let i = 0; i < HIST_BINS; i++) { const el = document.createElement('i'); histBarsEl.appendChild(el); histBars.push(el); }
+    let maxV = 0.001;
+    for (const p of list) { const v = Math.hypot(p.vx, p.vy); if (v > maxV) maxV = v; }
+    maxV *= 1.05;
+    const bins = new Array(HIST_BINS).fill(0);
+    for (const p of list) { const idx = Math.min(HIST_BINS - 1, Math.floor(Math.hypot(p.vx, p.vy) / maxV * HIST_BINS)); bins[idx]++; }
+    let maxBin = 1; for (const c of bins) if (c > maxBin) maxBin = c;
+    bins.forEach((c, i) => { histBars[i].style.height = `${Math.round(c / maxBin * 100)}%`; });
+  }
+
+  if (flags.tracer) {
+    const per = new Map<string, { n: number; v: number; m: number }>();
+    for (const p of list) {
+      let e = per.get(p.el.symbol);
+      if (!e) { e = { n: 0, v: 0, m: p.el.mass }; per.set(p.el.symbol, e); }
+      e.n++; e.v += Math.hypot(p.vx, p.vy);
+    }
+    // Compare only well-populated species so a lone trace atom can't skew the ratio.
+    const minN = Math.max(3, list.length * 0.03);
+    const eligible = [...per.entries()].filter(([, e]) => e.n >= minN).sort((a, b) => a[1].m - b[1].m);
+    if (eligible.length >= 2) {
+      const [lsym, le] = eligible[0];
+      const [hsym, he] = eligible[eligible.length - 1];
+      tracerLightSym = lsym; tracerHeavySym = hsym;
+      const lv = le.v / le.n, hv = he.v / he.n;
+      setText('tracerLight', `${lsym} · ${le.m}`);
+      setText('tracerHeavy', `${hsym} · ${he.m}`);
+      setText('tracerLightV', lv.toFixed(2));
+      setText('tracerHeavyV', hv.toFixed(2));
+      setText('tracerRatio', `${(hv > 1e-6 ? lv / hv : 0).toFixed(2)} / ${Math.sqrt(he.m / le.m).toFixed(2)}`);
+    } else {
+      tracerLightSym = tracerHeavySym = null;
+      setText('tracerLight', 'light'); setText('tracerHeavy', 'heavy');
+      setText('tracerLightV', '—'); setText('tracerHeavyV', '—');
+      setText('tracerRatio', 'inject 2+ species');
+    }
+  }
+}
+
 // --- render loop -------------------------------------------------------------
 
 const fpsEl = document.getElementById('fps')!;
@@ -276,6 +381,21 @@ function frame(now: number): void {
     ctx.fillText(Math.abs(p.charge) > 1 ? sign + Math.abs(p.charge) : sign, p.x + r + 4.5, p.y - r - 2);
   }
 
+  // diffusion tracer: ring the lightest (cyan) and heaviest (amber) species so their
+  // different diffusion rates (Graham's law) are visible.
+  if (flags.tracer && (tracerLightSym || tracerHeavySym)) {
+    ctx.lineWidth = 1.7;
+    for (const p of sim.atoms) {
+      const color = p.el.symbol === tracerLightSym ? '#44D4E4'
+        : p.el.symbol === tracerHeavySym ? '#EEA02B' : null;
+      if (!color) continue;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, drawRadius(p.el) + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   frames++;
   if (now - fpsTimer >= 500) {
     fps = Math.round(frames * 1000 / (now - fpsTimer));
@@ -283,6 +403,7 @@ function frame(now: number): void {
     statAtomsEl.textContent = String(sim.atoms.length);
     bondsEl.textContent = String(sim.bonds.length);
     renderTicker(analyzeMolecules(sim.bonds));
+    updateHUD();
     frames = 0;
     fpsTimer = now;
   }

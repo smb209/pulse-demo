@@ -40,6 +40,9 @@ export interface SimStats {
   temperature: number;
   ions: { positive: number; negative: number; net: number };
   meanSpeed: number;
+  meanKE: number;    // mean kinetic energy per atom (sim units) — 2D equipartition: ⟨KE⟩ = kT
+  pressure: number;  // smoothed wall force-per-length (0 until the sim has run)
+  area: number;      // container area (px²) — the "volume" in PV = N·kT
 }
 
 export interface SimOptions {
@@ -95,6 +98,23 @@ const REACTION_VCAP = 2.5;
 
 const COULOMB_K = 220;      // ion-ion force constant (softened inverse-square)
 const COULOMB_RANGE = 240;  // px — ions feel each other much further than neutrals
+
+// --- toggleable gas-physics extensions -------------------------------------
+// Off by default in the headless core (keeps existing invariants/tests intact);
+// the app opts individual features in via setPhysics().
+const GRAVITY = 0.03;       // downward acceleration (equal for all masses) when enabled
+const COLLIDE_K = 1.1;      // soft-sphere repulsion stiffness (excluded volume / collisions)
+const COLLIDE_VCAP = 3;     // clamp a single collision's Δv for integrator stability
+const TH_TARGET = 0.011;    // thermostat: target mean KE per atom ≈ TH_TARGET · T²
+const TH_LAMBDA = 0.4;      // thermostat coupling — strong enough to overcome damping so the
+                            // measured temperature actually reaches the setpoint (a uniform
+                            // velocity rescale preserves the Maxwell–Boltzmann shape).
+
+export interface PhysicsFlags {
+  collisions: boolean;  // excluded-volume repulsion so atoms bounce instead of overlapping
+  thermostat: boolean;  // rescale velocities so measured temperature tracks the setpoint
+  gravity: boolean;     // downward pull → barometric density gradient
+}
 
 type Kinetic = { el: ChemElement; vx: number; vy: number };
 
@@ -159,7 +179,12 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
   const cooldowns = new Map<string, number>(); // "idA:idB" (idA<idB) → frame when re-bonding is allowed
   const pointer: PointerState = { x: null, y: null, active: false, mode: 'attract' };
 
+  const phys: PhysicsFlags = { collisions: false, thermostat: false, gravity: false };
+  let wallImpulse = 0;   // momentum delivered to walls during the current frame
+  let pressureEMA = 0;   // smoothed wall force-per-length
+
   const coolKey = (a: Atom, b: Atom) => (a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`);
+  const bonded = (a: Atom, b: Atom) => a.bonds.some(bd => bd.a === b || bd.b === b);
   const bondLoad = (atom: Atom) => atom.bonds.reduce((s, bd) => s + bd.order, 0);
   const capLeft = (atom: Atom) => atom.el.maxBonds - bondLoad(atom);
 
@@ -255,6 +280,9 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
 
     setPointer(p: Partial<PointerState>) { Object.assign(pointer, p); },
 
+    phys,
+    setPhysics(p: Partial<PhysicsFlags>) { Object.assign(phys, p); },
+
     spawnTo,
 
     // Fill to half of cap (J15) — the other half is the player's injection budget.
@@ -331,6 +359,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         const jm = kick / Math.sqrt(p.el.mass / 16); // lighter atoms jitter harder
         p.vx += (rng() - 0.5) * 2 * jm * dt;
         p.vy += (rng() - 0.5) * 2 * jm * dt;
+        if (phys.gravity) p.vy += GRAVITY * dt; // equal accel — heavier gases settle lower
       }
 
       // bond springs
@@ -350,14 +379,19 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         b.vx -= ux * dampAmt; b.vy -= uy * dampAmt;
       }
 
-      // integrate + walls
+      // integrate + walls (wall bounces deposit momentum → pressure measurement)
       for (const p of atoms) {
         p.x += p.vx * dt; p.y += p.vy * dt;
-        if (p.x < 0) { p.x = 0; p.vx *= -1; }
-        if (p.x > W) { p.x = W; p.vx *= -1; }
-        if (p.y < 0) { p.y = 0; p.vy *= -1; }
-        if (p.y > H) { p.y = H; p.vy *= -1; }
+        if (p.x < 0) { p.x = 0; p.vx *= -1; wallImpulse += 2 * p.el.mass * Math.abs(p.vx); }
+        if (p.x > W) { p.x = W; p.vx *= -1; wallImpulse += 2 * p.el.mass * Math.abs(p.vx); }
+        if (p.y < 0) { p.y = 0; p.vy *= -1; wallImpulse += 2 * p.el.mass * Math.abs(p.vy); }
+        if (p.y > H) { p.y = H; p.vy *= -1; wallImpulse += 2 * p.el.mass * Math.abs(p.vy); }
       }
+      // Pressure = wall force per unit boundary length, smoothed. By 2D kinetic theory this
+      // tracks n·⟨KE⟩, so PV/(N·kT) ≈ 1 for an ideal gas; interactions push it off 1.
+      const perimeter = 2 * (W + H) || 1;
+      pressureEMA += ((wallImpulse / perimeter) - pressureEMA) * 0.05;
+      wallImpulse = 0;
 
       // bond breaking (energy-gated per chemistry.ts); the bath floor keeps global
       // temperature honest even though bond damping cools a pair's raw eRel
@@ -399,6 +433,19 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
           const dy = b.y - a.y; if (dy > MAXR || dy < -MAXR) continue;
           const d2 = dx * dx + dy * dy;
           if (d2 > MAXR * MAXR || d2 < 1) continue;
+          // excluded volume (collisions): non-bonded atoms repel once they overlap, so they
+          // bounce instead of passing through. Contact < bond rest length, so chemistry is
+          // untouched. This is the keystone that makes the field behave like a real gas.
+          if (phys.collisions && !bonded(a, b)) {
+            const contact = drawRadius(a.el) + drawRadius(b.el);
+            if (d2 < contact * contact) {
+              const d = Math.sqrt(d2);
+              const push = Math.min(COLLIDE_K * (contact - d) * dt, COLLIDE_VCAP);
+              const ux = dx / d, uy = dy / d;
+              a.vx -= ux * push / (a.el.mass / 16); a.vy -= uy * push / (a.el.mass / 16);
+              b.vx += ux * push / (b.el.mass / 16); b.vy += uy * push / (b.el.mass / 16);
+            }
+          }
           if (capLeft(a) > 0 && capLeft(b) > 0) {
             const aff = pairAffinity(a.el, b.el);
             if (aff > 0) {
@@ -411,6 +458,20 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
               if (d2 < capture * capture) tryForm(a, b);
             }
           }
+        }
+      }
+
+      // thermostat: make temperature emergent-but-controlled. Measure mean KE, then gently
+      // rescale velocities toward the setpoint's target KE (Berendsen-style) so the reported
+      // temperature reflects real kinetic state instead of just the raw thermal-kick knob.
+      if (phys.thermostat && atoms.length) {
+        let keSum = 0;
+        for (const p of atoms) keSum += p.el.mass * (p.vx * p.vx + p.vy * p.vy);
+        const measKE = 0.5 * keSum / atoms.length;
+        const target = TH_TARGET * sim.temperature * sim.temperature;
+        if (measKE > 1e-9) {
+          const scale = Math.sqrt(Math.max(0, 1 + TH_LAMBDA * (target / measKE - 1)));
+          for (const p of atoms) { p.vx *= scale; p.vy *= scale; }
         }
       }
 
@@ -430,7 +491,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
       const byElement: Record<string, number> = {};
       for (const p of atoms) byElement[p.el.symbol] = (byElement[p.el.symbol] ?? 0) + 1;
       const byBondPair: Record<string, number> = {};
-      let maxLoadRatio = 0, overloaded = 0, positive = 0, negative = 0, net = 0, speedSum = 0;
+      let maxLoadRatio = 0, overloaded = 0, positive = 0, negative = 0, net = 0, speedSum = 0, keSum = 0;
       for (const bd of bonds) byBondPair[bd.key] = (byBondPair[bd.key] ?? 0) + 1;
       for (const p of atoms) {
         if (p.el.maxBonds > 0) maxLoadRatio = Math.max(maxLoadRatio, bondLoad(p) / p.el.maxBonds);
@@ -439,12 +500,16 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         if (p.charge < 0) negative++;
         net += p.charge;
         speedSum += Math.hypot(p.vx, p.vy);
+        keSum += 0.5 * p.el.mass * (p.vx * p.vx + p.vy * p.vy);
       }
       return {
         atoms: atoms.length, bonds: bonds.length, byElement, byBondPair,
         maxLoadRatio, overloaded, cap: sim.cap, temperature: sim.temperature,
         ions: { positive, negative, net },
         meanSpeed: atoms.length ? speedSum / atoms.length : 0,
+        meanKE: atoms.length ? keSum / atoms.length : 0,
+        pressure: pressureEMA,
+        area: W * H,
       };
     },
   };

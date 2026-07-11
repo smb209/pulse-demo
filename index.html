@@ -250,6 +250,70 @@
   #panel.collapsed { gap: 0; }
   #panel.collapsed > :not(.panel-toggle) { display: none; }
 
+  /* gas-physics + readout toggles */
+  .toggles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .toggles button {
+    padding: 8px 2px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+  }
+  .toggles button:hover { color: var(--text); border-color: var(--accent); }
+  .toggles button.active {
+    color: var(--bg);
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 12px rgba(238, 160, 43, 0.5);
+  }
+
+  /* gas-readout HUD (left, under the header) */
+  #gasHUD {
+    position: fixed;
+    left: 18px;
+    top: calc(max(14px, env(safe-area-inset-top)) + 74px);
+    z-index: 9;
+    width: 210px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    user-select: none;
+    pointer-events: none;
+  }
+  #gasHUD .hud-sec { display: flex; flex-direction: column; gap: 6px; }
+  #gasHUD .hud-title {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+  }
+  #gasHUD .hud-row { display: flex; justify-content: space-between; font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+  #gasHUD .hud-row span { color: var(--text-muted); }
+  #gasHUD .hud-row b { color: var(--primary); font-weight: 600; }
+  #gasHUD .hud-row b.warn { color: var(--accent); }
+  #histBars { display: flex; align-items: flex-end; gap: 2px; height: 46px; }
+  #histBars i { flex: 1; background: var(--primary); border-radius: 2px 2px 0 0; min-height: 1px; transition: height 0.25s ease; }
+  #histMeta { font-size: 0.58rem; color: var(--text-muted); letter-spacing: 0.04em; }
+  /* Desktop: the control panel owns the left edge, so the readout HUD lives on the right.
+     Mobile: the panel is docked to the bottom, so the HUD stays top-left. */
+  @media (min-width: 721px) {
+    #gasHUD { left: auto; right: 18px; top: calc(max(14px, env(safe-area-inset-top)) + 150px); }
+  }
+  @media (max-width: 720px) {
+    #gasHUD { width: min(170px, calc(100vw - 36px)); }
+  }
+
   .group label {
     display: flex;
     justify-content: space-between;
@@ -340,6 +404,7 @@
   @media (max-width: 720px) {
     #panel .presets-wrap { flex: 1 1 100%; }
     #panel .inject-wrap { flex: 1 1 100%; }
+    #panel .physics-wrap { flex: 1 1 100%; }
     #panel .btnrow { flex: 1 1 100%; }
   }
 
@@ -503,6 +568,17 @@
       <button data-inject="Fe" title="Iron">Fe</button>
     </div>
   </div>
+  <div class="group physics-wrap">
+    <label>Gas physics</label>
+    <div class="toggles" id="physics">
+      <button data-flag="collisions" title="Excluded volume — atoms collide and bounce instead of overlapping">Collide</button>
+      <button data-flag="thermostat" title="Drive the measured temperature to the slider setpoint">Thermo</button>
+      <button data-flag="gravity" title="Downward pull — heavier gas settles lower (barometric)">Gravity</button>
+      <button data-flag="pressure" title="Measure pressure and PV = N·kT compressibility (Z)">Pressure</button>
+      <button data-flag="speeds" title="Maxwell–Boltzmann speed histogram">Speeds</button>
+      <button data-flag="tracer" title="Tag lightest vs heaviest species — diffusion / Graham's law">Tracer</button>
+    </div>
+  </div>
   <div class="group">
     <label>Max atoms <output id="capOut">250</output></label>
     <input type="range" id="cap" autocomplete="off" min="50" max="500" value="250" step="10">
@@ -514,6 +590,27 @@
   <div class="btnrow">
     <button id="burstBtn" title="Break every bond — fragments ejected with the bond energy">✦ Burst</button>
     <button id="resetBtn" title="Cap 250 · Temp 40 · Attract · Mix · respawn">⟲ Reset</button>
+  </div>
+</div>
+
+<div id="gasHUD" hidden>
+  <div class="hud-sec" id="hudGas" hidden>
+    <div class="hud-title">Gas state · PV = N·kT</div>
+    <div class="hud-row"><span>Temp (kT)</span><b id="hudT">—</b></div>
+    <div class="hud-row"><span>Pressure</span><b id="hudP">—</b></div>
+    <div class="hud-row"><span>Atoms (N)</span><b id="hudN">—</b></div>
+    <div class="hud-row" title="PV / N·kT compressibility — 1 = ideal gas, <1 attraction wins, >1 excluded volume wins"><span>Z = PV/NkT</span><b id="hudZ">—</b></div>
+  </div>
+  <div class="hud-sec" id="hudSpeeds" hidden>
+    <div class="hud-title">Speed distribution</div>
+    <div id="histBars"></div>
+    <div id="histMeta">Maxwell–Boltzmann</div>
+  </div>
+  <div class="hud-sec" id="hudTracer" hidden>
+    <div class="hud-title">Diffusion · Graham's law</div>
+    <div class="hud-row"><span id="tracerLight">light</span><b id="tracerLightV">—</b></div>
+    <div class="hud-row"><span id="tracerHeavy">heavy</span><b id="tracerHeavyV">—</b></div>
+    <div class="hud-row" title="Measured mean-speed ratio vs Graham's √(m_heavy / m_light) prediction"><span>ratio / √m</span><b id="tracerRatio">—</b></div>
   </div>
 </div>
 
