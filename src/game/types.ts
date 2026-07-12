@@ -46,9 +46,11 @@ export interface EmitterDef {
   element: string;   // symbol, resolved via BY_SYMBOL
   x: number; y: number;
   angle: number;     // emission direction (radians)
+  mols: number;      // total atoms this emitter will release (the reactant budget)
   rate: number;      // atoms per second
   speed: number;     // initial speed
   spread?: number;   // angular jitter (radians)
+  aimable?: boolean; // player may rotate it during the setup phase
 }
 
 export interface ZoneDef {
@@ -83,5 +85,6 @@ export interface LevelDef {
   preplaced?: PlacedToolDef[];
   palette: PaletteEntry[];       // tools the player may place + how many
   objective: ObjectiveDef;
-  par: { tools: number; seconds: number };  // for the star rating
+  settleSeconds?: number;  // grace time after the last atom is emitted, before scoring (default 6)
+  par: { tools: number; seconds: number };  // legacy time/tools par (kept for reference)
 }

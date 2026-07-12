@@ -171,11 +171,11 @@ export const TOOL_TYPES: Record<string, ToolType> = {
       const dx = x - t.x, dy = y - t.y;
       if (dx * dx + dy * dy > t.radius * t.radius) return 1;
       const oh = (sa === 'H' && sb === 'O') || (sa === 'O' && sb === 'H');
-      if (oh) return 16;
+      if (oh) return 28;
       if (sa === 'H' && sb === 'H') return 0.02;
       return 0.3;
     },
-    breakBoost(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 0.15 : 1; }, // stabilises the water it makes
+    breakBoost(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 0.04 : 1; }, // strongly stabilises the water it makes
     aim(t, dx, dy) { t.radius = 70 + aimFrac(dx, dy) * 90; },
     draw(ctx, t, selected) {
       glowRing(ctx, t, '238,192,43', selected);
@@ -221,21 +221,22 @@ export const LEVELS: LevelDef[] = [
     // emitters spray along the bottom; the tank is up in the top-right corner, so the gas
     // never drifts there on its own — you must fan it up and over.
     emitters: [
-      { element: 'H', x: 0.05, y: 0.64, angle: 0, rate: 14, speed: 2.2, spread: 0.1 },
-      { element: 'H', x: 0.05, y: 0.76, angle: 0, rate: 14, speed: 2.2, spread: 0.1 },
-      { element: 'H', x: 0.05, y: 0.88, angle: 0, rate: 14, speed: 2.2, spread: 0.1 },
+      { element: 'H', x: 0.05, y: 0.64, angle: 0, mols: 20, rate: 16, speed: 2.2, spread: 0.1 },
+      { element: 'H', x: 0.05, y: 0.76, angle: 0, mols: 20, rate: 16, speed: 2.2, spread: 0.1 },
+      { element: 'H', x: 0.05, y: 0.88, angle: 0, mols: 20, rate: 16, speed: 2.2, spread: 0.1 },
     ],
     zones: [{ id: 'tank', x: 0.77, y: 0.08, w: 0.19, h: 0.32, label: 'H₂' }],
     // a shredder squats in the bottom flow path — lift the gas over it or it gets cracked
     preplaced: [{ type: 'shredder', x: 0.56, y: 0.78, fixed: true }],
     palette: [{ type: 'fan', limit: 4 }, { type: 'catalyst', limit: 2 }, { type: 'deflector', limit: 2 }],
     objective: { kind: 'collect', formula: 'H2', count: 8 },
+    settleSeconds: 6,
     par: { tools: 3, seconds: 50 },
   },
   {
     id: 'first-water',
     name: 'First Water',
-    blurb: 'Hydrogen bonds to itself first — cover the mixing zone with the O–H catalyst and fan the water into the tank. A heater helps spark the reaction.',
+    blurb: 'Cover the mixing zone with the O–H catalyst (a heater sparks it) so oxygen grabs the hydrogen — water is a low-yield reaction, so make what you can.',
     featured: 'O',
     reaction: '2 H₂ + O₂ → 2 H₂O',
     fact: 'Burning hydrogen in oxygen releases huge energy and makes only water — the cleanest fuel there is. Rocket engines run on exactly this: liquid H₂ + liquid O₂ → H₂O and enormous thrust.',
@@ -244,15 +245,17 @@ export const LEVELS: LevelDef[] = [
     temperature: 22,
     collisions: false,
     emitters: [
-      { element: 'H', x: 0.05, y: 0.38, angle: 0.26, rate: 10, speed: 1.7, spread: 0.12 },
-      { element: 'H', x: 0.05, y: 0.62, angle: -0.26, rate: 10, speed: 1.7, spread: 0.12 },
-      { element: 'O', x: 0.05, y: 0.50, angle: 0, rate: 11, speed: 1.5, spread: 0.12 },
+      { element: 'H', x: 0.05, y: 0.34, angle: 0.30, mols: 54, rate: 20, speed: 1.9, spread: 0.1, aimable: true },
+      { element: 'H', x: 0.05, y: 0.66, angle: -0.30, mols: 54, rate: 20, speed: 1.9, spread: 0.1, aimable: true },
+      { element: 'O', x: 0.05, y: 0.50, angle: 0, mols: 54, rate: 20, speed: 1.7, spread: 0.1, aimable: true },
     ],
-    zones: [{ id: 'tank', x: 0.58, y: 0.24, w: 0.20, h: 0.52, label: 'H₂O' }],
-    // a contaminant patch off to the side — keep your stream clear of it
-    preplaced: [{ type: 'getter', x: 0.44, y: 0.82, fixed: true }],
-    palette: [{ type: 'ohcat', limit: 2 }, { type: 'heater', limit: 2 }, { type: 'fan', limit: 3 }, { type: 'cooler', limit: 1 }],
-    objective: { kind: 'collect', formula: 'H2O', count: 5 },
+    // the whole chamber is the collector — any water made in it counts
+    zones: [{ id: 'tank', x: 0.24, y: 0.10, w: 0.72, h: 0.80, label: 'H₂O — whole chamber' }],
+    // a contaminant patch in the corner — atoms it adsorbs are lost from your budget
+    preplaced: [{ type: 'getter', x: 0.84, y: 0.84, fixed: true }],
+    palette: [{ type: 'ohcat', limit: 3 }, { type: 'heater', limit: 2 }, { type: 'fan', limit: 3 }, { type: 'cooler', limit: 1 }],
+    objective: { kind: 'collect', formula: 'H2O', count: 3 },
+    settleSeconds: 10,
     par: { tools: 4, seconds: 90 },
   },
 ];

@@ -78,10 +78,22 @@ budget** idea would fix the balance tension *and* ground the star rating:
 - Data model: `LevelDef.budget` (per-element mols) + emitters draw from it; track consumed;
   compute theoretical max product from the equation; score = collected / theoretical.
 
+## Setup phase + reactant budget — SHIPPED (2026-07-12)
+
+Levels now run **setup → run → done**. Setup: place/aim tools, rotate aimable emitters,
+then ▶ Start. Emitters carry a finite `mols` budget (labelled on the board) and stop when
+spent; a `settleSeconds` grace period lets stragglers react, then the run is scored.
+**Stars are yield-based**: win = collect the objective; ★★/★★★ scale with pushing yield
+past it; the result card shows "collected X of Y possible · Z% yield" (Y = stoichiometric
+max from the balanced equation). This retired the cap/par balance hacks:
+- L1: fixed emitters, corner tank, shredder hazard — a good fan chain hits ~53% yield (★★★),
+  baseline fails.
+- L2: whole chamber is the collector; catalyst+heater required (baseline = 0 water).
+  **Water is inherently low-yield & noisy in this sim (~3–5 of 54 theoretical)** — objective
+  set to 3 so the catalyst reliably clears it; 3-star is a stretch. This is the honest ceiling.
+
 ## Deferred / to-do
 
-- [ ] **Reactant budget + yield-based stars** (above) — the priority; supersedes ad-hoc
-      cap/par balance and grounds scoring in real stoichiometry.
 - [ ] **Level select screen** (currently `?level=N` + a Next button on win).
 - [ ] **Placement restrictions** — allow a tool only inside a marked region, or cap material
       introduced per region. Data model: per-palette-entry `placeIn` rect(s).

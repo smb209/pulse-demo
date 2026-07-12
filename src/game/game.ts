@@ -10,7 +10,7 @@ import type { LevelDef, ToolInstance } from './types';
 const SUBS = '₀₁₂₃₄₅₆₇₈₉';
 const unsub = (s: string) => s.replace(/[₀-₉]/g, c => String(SUBS.indexOf(c)));
 
-interface Emitter { element: string; px: number; py: number; angle: number; rate: number; speed: number; spread: number; }
+interface Emitter { element: string; px: number; py: number; angle: number; mols: number; rate: number; speed: number; spread: number; aimable: boolean; emitted: number; }
 interface Zone { id: string; px: number; py: number; pw: number; ph: number; label: string; }
 
 export function initGame(): void {
@@ -39,9 +39,12 @@ export function initGame(): void {
   let emitters: Emitter[] = [];
   let zones: Zone[] = [];
   function layout(): void {
-    emitters = level.emitters.map(e => ({
-      element: e.element, px: e.x * W, py: e.y * H, angle: e.angle,
-      rate: e.rate, speed: e.speed, spread: e.spread ?? 0,
+    // preserve player-set angles + emitted counts across re-layout (resize)
+    const prev = emitters;
+    emitters = level.emitters.map((e, i) => ({
+      element: e.element, px: e.x * W, py: e.y * H, angle: prev[i]?.angle ?? e.angle,
+      mols: e.mols, rate: e.rate, speed: e.speed, spread: e.spread ?? 0,
+      aimable: e.aimable ?? false, emitted: prev[i]?.emitted ?? 0,
     }));
     zones = level.zones.map(z => ({ id: z.id, px: z.x * W, py: z.y * H, pw: z.w * W, ph: z.h * H, label: z.label ?? '' }));
   }
@@ -81,21 +84,48 @@ export function initGame(): void {
     breakBoost(x, y) { let m = 1; for (const t of tools) { const b = TOOL_TYPES[t.type].breakBoost?.(t, x, y); if (b !== undefined) m *= b; } return m; },
   });
 
-  // --- game state -----------------------------------------------------------
+  // --- game state (setup → run → done) --------------------------------------
+  type Phase = 'setup' | 'run' | 'done';
+  let phase: Phase = 'setup';
   let collected = 0;
   let elapsed = 0;
-  let won = false;
+  let settle = 0;   // seconds since the last atom was emitted
+  let result: { won: boolean; stars: number; theoretical: number } | null = null;
+  const SETTLE = level.settleSeconds ?? 6;
   const emitAcc = new Array(level.emitters.length).fill(0);
 
-  function reset(): void {
-    for (const a of [...sim.atoms]) sim.despawn(a);
-    loadTools();
-    collected = 0; elapsed = 0; won = false;
-    emitAcc.fill(0);
-    selected = null;
-    hideWin();
-    syncPalette();
+  function parseFormula(f: string): Record<string, number> {
+    const c: Record<string, number> = {};
+    for (const m of f.matchAll(/([A-Z][a-z]?)(\d*)/g)) if (m[1]) c[m[1]] = (c[m[1]] ?? 0) + (m[2] ? +m[2] : 1);
+    return c;
   }
+  // stoichiometric ceiling: how much product the reactant budget could make in theory
+  function theoreticalMax(): number {
+    const budget: Record<string, number> = {};
+    for (const e of emitters) budget[e.element] = (budget[e.element] ?? 0) + e.mols;
+    const need = parseFormula(level.objective.formula);
+    let max = Infinity;
+    for (const s in need) max = Math.min(max, Math.floor((budget[s] ?? 0) / need[s]));
+    return Number.isFinite(max) ? max : 0;
+  }
+
+  function startRun(): void {
+    if (phase !== 'setup') return;
+    for (const a of [...sim.atoms]) sim.despawn(a);
+    for (const e of emitters) e.emitted = 0;
+    emitAcc.fill(0);
+    collected = 0; elapsed = 0; settle = 0; result = null;
+    selected = null; aiming = null; dragging = null; aimingEmitter = null;
+    phase = 'run'; syncHUD();
+  }
+  function reset(): void {            // back to setup, keeping the placed tools
+    for (const a of [...sim.atoms]) sim.despawn(a);
+    for (const e of emitters) e.emitted = 0;
+    emitAcc.fill(0);
+    collected = 0; elapsed = 0; settle = 0; result = null; phase = 'setup';
+    hideResult(); syncHUD();
+  }
+  function clearBoard(): void { tools = tools.filter(t => t.fixed); reset(); }
 
   // --- collector: bonded components of the target formula fully inside a tank -
   let collectTimer = 0;
@@ -116,31 +146,39 @@ export function initGame(): void {
       const counts: Record<string, number> = {};
       for (const a of atoms) counts[a.el.symbol] = (counts[a.el.symbol] ?? 0) + 1;
       if (unsub(formulaOf(counts)) !== level.objective.formula) continue;
-      const z = zones.find(z => atoms.every(a => a.x >= z.px && a.x <= z.px + z.pw && a.y >= z.py && a.y <= z.py + z.ph));
+      let cx = 0, cy = 0; for (const a of atoms) { cx += a.x; cy += a.y; } cx /= atoms.length; cy /= atoms.length;
+      const z = zones.find(z => cx >= z.px && cx <= z.px + z.pw && cy >= z.py && cy <= z.py + z.ph);
       if (z) { for (const a of atoms) sim.despawn(a); collected++; }
     }
-    if (!won && collected >= level.objective.count) win();
   }
 
-  function win(): void {
-    won = true;
-    const usedTools = tools.filter(t => !t.fixed).length;
-    let stars = 1;
-    if (elapsed <= level.par.seconds && usedTools <= level.par.tools) stars = 3;
-    else if (elapsed <= level.par.seconds || usedTools <= level.par.tools) stars = 2;
-    showWin(stars, usedTools);
+  // scored on yield: collected vs the stoichiometric ceiling the budget allowed
+  function finish(): void {
+    phase = 'done';
+    collect();
+    const theoretical = theoreticalMax();
+    const goal = level.objective.count;
+    const won = collected >= goal;
+    // stars scale with how far past the minimum you push the yield (yield% is shown as flavour)
+    const stars = !won ? 0 : collected >= goal * 2 ? 3 : collected >= Math.ceil(goal * 1.5) ? 2 : 1;
+    result = { won, stars, theoretical };
+    showResult();
   }
 
-  // --- interaction: place / drag / remove tools -----------------------------
+  // --- interaction (setup phase only) ---------------------------------------
   let selected: string | null = null;      // palette type queued for placement
   let dragging: ToolInstance | null = null; // existing tool being moved
   let aiming: ToolInstance | null = null;   // freshly placed tool being aimed by drag
+  let aimingEmitter: Emitter | null = null; // aimable emitter being rotated
   let aimPt = { x: 0, y: 0 };
   const hit = (x: number, y: number) => tools.find(t => !t.fixed && Math.hypot(t.x - x, t.y - y) < 22);
+  const hitEmitter = (x: number, y: number) => emitters.find(e => e.aimable && Math.hypot(e.px - x, e.py - y) < 26);
 
   canvas.addEventListener('pointerdown', e => {
-    if (won) return;
+    if (phase !== 'setup') return;
     const p = toLocal(e);
+    const em = hitEmitter(p.x, p.y);
+    if (em) { aimingEmitter = em; return; }
     const grabbed = hit(p.x, p.y);
     if (grabbed) { dragging = grabbed; return; }
     if (selected) {
@@ -150,20 +188,20 @@ export function initGame(): void {
     }
   });
   window.addEventListener('pointermove', e => {
+    if (phase !== 'setup') return;
     const p = toLocal(e);
+    if (aimingEmitter) { aimingEmitter.angle = Math.atan2(p.y - aimingEmitter.py, p.x - aimingEmitter.px); return; }
     if (aiming) {
       aimPt = p;
       const dx = p.x - aiming.x, dy = p.y - aiming.y;
-      if (Math.hypot(dx, dy) > 10) TOOL_TYPES[aiming.type].aim?.(aiming, dx, dy); // drag past deadzone = aim
+      if (Math.hypot(dx, dy) > 10) TOOL_TYPES[aiming.type].aim?.(aiming, dx, dy);
       return;
     }
-    if (dragging) {
-      dragging.x = Math.max(0, Math.min(W, p.x));
-      dragging.y = Math.max(0, Math.min(H, p.y));
-    }
+    if (dragging) { dragging.x = Math.max(0, Math.min(W, p.x)); dragging.y = Math.max(0, Math.min(H, p.y)); }
   });
-  window.addEventListener('pointerup', () => { dragging = null; aiming = null; });
+  window.addEventListener('pointerup', () => { dragging = null; aiming = null; aimingEmitter = null; });
   canvas.addEventListener('dblclick', e => {
+    if (phase !== 'setup') return;
     const p = toLocal(e);
     const t = hit(p.x, p.y);
     if (t) { tools = tools.filter(x => x !== t); syncPalette(); }
@@ -182,28 +220,43 @@ export function initGame(): void {
     }
   }
   for (const btn of hud.paletteBtns) {
-    btn.addEventListener('click', () => { selected = selected === btn.dataset.type ? null : btn.dataset.type!; syncPalette(); });
+    btn.addEventListener('click', () => { if (phase !== 'setup') return; selected = selected === btn.dataset.type ? null : btn.dataset.type!; syncPalette(); });
   }
+  hud.startBtn.addEventListener('click', startRun);
   hud.resetBtn.addEventListener('click', reset);
+  hud.clearBtn.addEventListener('click', clearBoard);
   hud.replayBtn.addEventListener('click', reset);
-  syncPalette();
 
-  function showWin(stars: number, usedTools: number): void {
-    hud.winStars.textContent = '★★★'.slice(0, stars) + '☆☆☆'.slice(0, 3 - stars);
-    hud.winMeta.textContent = `${Math.round(elapsed)}s · ${usedTools} tool${usedTools === 1 ? '' : 's'}`;
-    hud.fact.textContent = level.fact ? `Did you know? ${level.fact}` : '';
+  function syncHUD(): void {
+    document.body.dataset.phase = phase;
+    hud.progress.textContent = `${Math.min(collected, level.objective.count)} / ${level.objective.count}`;
+    syncPalette();
+  }
+  syncHUD();
+
+  function showResult(): void {
+    const r = result!;
+    const yieldPct = r.theoretical > 0 ? Math.round(collected / r.theoretical * 100) : 0;
+    hud.winTitle.textContent = r.won ? 'Reaction complete' : 'Not enough product — retry';
+    hud.winStars.textContent = r.won ? ('★★★'.slice(0, r.stars) + '☆☆☆'.slice(0, 3 - r.stars)) : '☆☆☆';
+    hud.winMeta.textContent = `Collected ${collected} of ${r.theoretical} possible · ${yieldPct}% yield`;
+    hud.fact.textContent = r.won && level.fact ? `Did you know? ${level.fact}` : (r.won ? '' : 'Route more reactants into the tank, or waste fewer — try a different setup.');
+    if (hud.nextBtn) hud.nextBtn.style.display = r.won ? '' : 'none';
     hud.winWrap.style.display = 'flex';
   }
-  function hideWin(): void { hud.winWrap.style.display = 'none'; }
+  function hideResult(): void { hud.winWrap.style.display = 'none'; }
 
   // --- loop -----------------------------------------------------------------
   function tick(dtMs: number): void {
-    if (won) return;
+    if (phase !== 'run') return;
     elapsed += dtMs / 1000;
+    let emitting = false;
     emitters.forEach((e, i) => {
+      if (e.emitted >= e.mols) return;
+      emitting = true;
       emitAcc[i] += e.rate * dtMs / 1000;
-      while (emitAcc[i] >= 1) {
-        emitAcc[i] -= 1;
+      while (emitAcc[i] >= 1 && e.emitted < e.mols) {
+        emitAcc[i] -= 1; e.emitted++;
         const ang = e.angle + (Math.random() - 0.5) * e.spread;
         sim.spawnAtom(BY_SYMBOL[e.element], e.px, e.py, Math.cos(ang) * e.speed, Math.sin(ang) * e.speed);
       }
@@ -217,6 +270,9 @@ export function initGame(): void {
     }
     collectTimer += dtMs;
     if (collectTimer >= 200) { collectTimer = 0; collect(); }
+    // once the reactants are spent, give stragglers a grace period, then score
+    if (emitting) settle = 0;
+    else { settle += dtMs / 1000; if (settle >= SETTLE) finish(); }
   }
 
   let last = performance.now();
@@ -225,7 +281,9 @@ export function initGame(): void {
     tick(dtMs);
     draw();
     hud.progress.textContent = `${Math.min(collected, level.objective.count)} / ${level.objective.count}`;
-    hud.timer.textContent = `${Math.round(elapsed)}s`;
+    const emittedTotal = emitters.reduce((s, e) => s + e.emitted, 0);
+    const molsTotal = emitters.reduce((s, e) => s + e.mols, 0);
+    hud.timer.textContent = phase === 'run' ? `${emittedTotal}/${molsTotal} mol` : `${molsTotal} mol`;
     requestAnimationFrame(frame);
   }
 
@@ -240,21 +298,39 @@ export function initGame(): void {
       ctx.fillRect(z.px, z.py, z.pw, z.ph);
       ctx.strokeRect(z.px, z.py, z.pw, z.ph);
       ctx.setLineDash([]);
-      ctx.fillStyle = '#A0AAAB'; ctx.font = '600 12px -apple-system, system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`collect ${z.label}`, z.px + z.pw / 2, z.py - 8);
+      ctx.fillStyle = '#8B9698'; ctx.font = '600 11px -apple-system, system-ui, sans-serif';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(`collect ${z.label}`, z.px + 8, z.py + 7); // inside the zone, clear of the HUD
       ctx.restore();
     }
 
-    // emitters
+    // emitters — element disc, direction nozzle, and an mols label (remaining while running)
     for (const e of emitters) {
       const el = BY_SYMBOL[e.element];
       ctx.save();
+      // direction nozzle
+      ctx.strokeStyle = e.aimable ? '#F1F3F3' : '#6A7273';
+      ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+      const nx = e.px + Math.cos(e.angle) * 24, ny = e.py + Math.sin(e.angle) * 24;
+      ctx.beginPath(); ctx.moveTo(e.px, e.py); ctx.lineTo(nx, ny);
+      ctx.lineTo(nx - Math.cos(e.angle - 0.5) * 7, ny - Math.sin(e.angle - 0.5) * 7);
+      ctx.moveTo(nx, ny); ctx.lineTo(nx - Math.cos(e.angle + 0.5) * 7, ny - Math.sin(e.angle + 0.5) * 7);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      if (e.aimable && phase === 'setup') { // rotatable hint ring
+        ctx.strokeStyle = '#F1F3F3'; ctx.globalAlpha = 0.35; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.arc(e.px, e.py, 24, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 1;
+      }
       ctx.fillStyle = el.cpk;
       ctx.beginPath(); ctx.arc(e.px, e.py, 13, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#101414'; ctx.font = '700 11px -apple-system, system-ui, sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(el.symbol, e.px, e.py + 0.5);
+      // mols label below
+      ctx.fillStyle = '#A0AAAB'; ctx.font = '600 10px -apple-system, system-ui, sans-serif'; ctx.textBaseline = 'top';
+      const remaining = phase === 'run' ? e.mols - e.emitted : e.mols;
+      ctx.fillText(`${remaining} mol`, e.px, e.py + 16);
       ctx.restore();
     }
 
@@ -291,14 +367,15 @@ export function initGame(): void {
 
   // Dev handle for headless verification (backgrounded preview tabs suspend rAF).
   (window as unknown as { __game: unknown }).__game = {
-    tick: (ms = 16.67, n = 1) => { for (let i = 0; i < n; i++) tick(ms); return { collected, atoms: sim.atoms.length }; },
+    start: () => startRun(),
+    reset: () => reset(),
+    tick: (ms = 16.67, n = 1) => { for (let i = 0; i < n; i++) tick(ms); return { phase, collected, atoms: sim.atoms.length }; },
+    aimEmitter: (i: number, deg: number) => { if (emitters[i]) emitters[i].angle = deg * Math.PI / 180; },
     place: (type: string, xf: number, yf: number, angleDeg?: number) => { const t = mkTool(type, xf * W, yf * H); if (angleDeg != null) t.angle = angleDeg * Math.PI / 180; tools.push(t); syncPalette(); },
     clear: () => { tools = tools.filter(t => t.fixed); syncPalette(); },
     report: () => analyzeMolecules(sim.bonds).molecules,
-    tools: () => tools.map(t => ({ type: t.type, angle: +t.angle.toFixed(2), strength: +t.strength.toFixed(2), radius: Math.round(t.radius) })),
-    inTank: () => sim.atoms.filter(a => zones.some(z => a.x >= z.px && a.x <= z.px + z.pw && a.y >= z.py && a.y <= z.py + z.ph)).length,
-    hist: () => { const b = new Array(10).fill(0); for (const a of sim.atoms) b[Math.min(9, Math.max(0, Math.floor(a.x / W * 10)))]++; return b; },
-    state: () => ({ collected, won, atoms: sim.atoms.length, bonds: sim.bonds.length, tools: tools.length, ke: +sim.stats().meanKE.toFixed(2), elapsed: Math.round(elapsed) }),
+    theoretical: () => theoreticalMax(),
+    state: () => ({ phase, collected, won: result?.won ?? false, stars: result?.stars ?? 0, theoretical: theoreticalMax(), atoms: sim.atoms.length, bonds: sim.bonds.length, tools: tools.length, elapsed: Math.round(elapsed) }),
   };
 }
 
@@ -306,8 +383,10 @@ export function initGame(): void {
 
 interface HUD {
   paletteBtns: HTMLButtonElement[];
-  progress: HTMLElement; timer: HTMLElement; resetBtn: HTMLElement;
-  winWrap: HTMLElement; winStars: HTMLElement; winMeta: HTMLElement; fact: HTMLElement; replayBtn: HTMLElement;
+  progress: HTMLElement; timer: HTMLElement;
+  startBtn: HTMLElement; resetBtn: HTMLElement; clearBtn: HTMLElement;
+  winWrap: HTMLElement; winTitle: HTMLElement; winStars: HTMLElement; winMeta: HTMLElement; fact: HTMLElement;
+  replayBtn: HTMLElement; nextBtn: HTMLElement | null;
 }
 
 function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
@@ -327,21 +406,23 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
       <div class="g-blurb">${level.blurb}</div>
     </div>
     <div id="gBottom">
-      <div class="g-hint">tap a tool · press &amp; drag to place + aim · drag to move · double-tap to remove</div>
+      <div class="g-hint">Setup — place &amp; aim your tools, rotate the aimable emitters (white ring), then Start.</div>
+      <div class="g-row" id="gPalette">${palette}</div>
       <div class="g-row">
-        ${palette}
-        <button class="pl-btn ghost" id="gReset">Reset</button>
+        <button class="pl-btn primary" id="gStart">▶ Start reaction</button>
+        <button class="pl-btn ghost" id="gClear">Clear</button>
+        <button class="pl-btn ghost" id="gReset">Reset run</button>
         <a class="pl-btn ghost" href="${location.pathname}">Sandbox</a>
       </div>
     </div>
     <div id="gWin">
       <div class="g-card">
-        <div class="g-win-title">Level complete</div>
+        <div class="g-win-title" id="gWinTitle">Reaction complete</div>
         <div id="gStars">★★★</div>
         <div id="gWinMeta"></div>
         <div id="gFact"></div>
         <div class="g-card-row">
-          <button class="pl-btn" id="gReplay">Replay</button>
+          <button class="pl-btn" id="gReplay">Retry</button>
           ${hasNext ? `<a class="pl-btn" id="gNext" href="${nextHref}">Next level ▸</a>` : ''}
           <a class="pl-btn ghost" href="${location.pathname}">Sandbox</a>
         </div>
@@ -352,12 +433,16 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
     paletteBtns: [...root.querySelectorAll<HTMLButtonElement>('.pl-btn[data-type]')],
     progress: root.querySelector('#gProg')!,
     timer: root.querySelector('#gTime')!,
+    startBtn: root.querySelector('#gStart')!,
     resetBtn: root.querySelector('#gReset')!,
+    clearBtn: root.querySelector('#gClear')!,
     winWrap: root.querySelector('#gWin')!,
+    winTitle: root.querySelector('#gWinTitle')!,
     winStars: root.querySelector('#gStars')!,
     winMeta: root.querySelector('#gWinMeta')!,
     fact: root.querySelector('#gFact')!,
     replayBtn: root.querySelector('#gReplay')!,
+    nextBtn: root.querySelector('#gNext'),
   };
 }
 
@@ -392,6 +477,11 @@ function injectStyles(): void {
     .pl-btn.selected { border-color: var(--primary); box-shadow: 0 0 14px rgba(68,212,228,0.4); color: var(--primary); }
     .pl-btn.empty { opacity: 0.4; }
     .pl-btn.ghost { color: var(--text-muted); }
+    .pl-btn.primary { color: var(--bg); background: linear-gradient(100deg, var(--primary), var(--secondary)); border-color: transparent; font-weight: 700; box-shadow: 0 0 16px rgba(68,212,228,0.4); }
+    /* phase-gated bottom bar */
+    body[data-phase="run"] #gPalette, body[data-phase="run"] #gStart, body[data-phase="run"] #gClear { display: none; }
+    body[data-phase="setup"] #gReset { display: none; }
+    body[data-phase="done"] #gBottom { display: none; }
     .pl-dot { width: 10px; height: 10px; border-radius: 50%; }
     .pl-count { font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 12px; text-align: center; }
     .pl-btn.selected .pl-count { color: var(--primary); }
