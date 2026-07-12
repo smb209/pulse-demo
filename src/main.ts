@@ -6,7 +6,7 @@ import { PRESET_BY_ID, samplePreset, analyzeMolecules, type MoleculeReport } fro
 import { createSim, drawRadius } from './sim';
 
 declare global {
-  interface Window { __pulse: { stats: () => object; step: (frames?: number) => number } }
+  interface Window { __pulse: { stats: () => object; step: (frames?: number) => number; geometry: () => object } }
 }
 
 const GAME_MODE = new URLSearchParams(location.search).has('game');
@@ -534,6 +534,20 @@ window.__pulse = {
     const n = Math.min(Math.max(1, frames | 0), 36000);
     for (let i = 0; i < n; i++) sim.step();
     return n;
+  },
+  // Read-only geometry snapshot: for each polyatomic molecule, its central atom's bond
+  // angle(s). Lets a probe confirm VSEPR shapes (water bent, CO₂ linear) from the live sim.
+  geometry: () => {
+    const out: { formula: string; angle: number; center: string }[] = [];
+    for (const a of sim.atoms) {
+      if (a.bonds.length !== 2) continue;
+      const ns = a.bonds.map(bd => (bd.a === a ? bd.b : bd.a));
+      const a1 = Math.atan2(ns[0].y - a.y, ns[0].x - a.x);
+      const a2 = Math.atan2(ns[1].y - a.y, ns[1].x - a.x);
+      let d = Math.abs(a1 - a2); if (d > Math.PI) d = 2 * Math.PI - d;
+      out.push({ center: a.el.symbol, angle: Math.round((d * 180) / Math.PI), formula: `${ns[0].el.symbol}-${a.el.symbol}-${ns[1].el.symbol}` });
+    }
+    return { angles: out };
   },
 };
 

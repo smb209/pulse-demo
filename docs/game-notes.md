@@ -102,6 +102,16 @@ max from the balanced equation). This retired the cap/par balance hacks:
 - [ ] **Charged-region level** (pairs with ionizer) so electric fields actually shine.
 - [ ] **Persist stars per level** (localStorage) once there's a level select.
 
+## Sim realism — VSEPR bond angles (2026-07-12)
+
+Bonds were length-only springs, so multiple bonds on one atom pointed anywhere (H's
+orbited O randomly). Added a soft, momentum-conserving angle force in `sim.ts` that drives
+each central atom's bonds toward the angle its **steric number** wants (bonding neighbours
++ lone pairs, lone pairs ≈ (valence − bonds)/2 from a main-group `VALENCE` table).
+Live-sim measured angles: **H₂O 102–106°** (real 104.5° bent), **CO₂ 175–180°** (linear —
+C has no lone pairs), trigonal C ~120°. Stiffness `ANGLE_K` ≪ `SPRING_K` so shape emerges
+without rigidifying. `window.__pulse.geometry()` reports live per-molecule angles.
+
 ## Known limitations
 
 - Charge fields only move actual ions; neutral gas (H₂/N₂) is unaffected — the sim has no

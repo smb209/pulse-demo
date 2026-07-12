@@ -86,6 +86,62 @@ const BOND_DAMP = 0.92;    // damping of relative velocity along a bond axis
 const REBOND_COOLDOWN = 120; // frames a broken pair cannot re-form
 const ATTRACT_K = 0.055;   // strength of the affinity-scaled pair attraction
 
+// --- VSEPR bond-angle geometry ---------------------------------------------
+// Bonds are length-springs with no *angular* term, so two hydrogens on an oxygen point
+// anywhere and molecules look like random tangles. Real shape comes from valence-shell
+// electron-pair repulsion (VSEPR): bonding pairs *and* lone pairs spread as far apart as
+// they can. We give each central atom's bonds a target angle from its steric number
+// (bonding neighbours + lone pairs) and a soft, momentum-conserving restoring torque
+// toward it — so water bends to ~104.5°, CO₂ goes linear (no lone pairs on C), NH₃/CH₄
+// spread out, etc. Soft enough (≪ SPRING_K) that geometry emerges without the molecule
+// stiffening into a rigid body or the integrator ringing.
+const ANGLE_K = 0.018;
+
+// Valence-electron count for the main-group elements (group number). Used to estimate
+// lone pairs = (valence − bonds used)/2. Transition metals/lanthanides don't obey simple
+// VSEPR — absent here → those atoms fall back to an even in-plane spread (no lone-pair bend).
+const VALENCE: Record<string, number> = {
+  H: 1, He: 2,
+  Li: 1, Be: 2, B: 3, C: 4, N: 5, O: 6, F: 7, Ne: 8,
+  Na: 1, Mg: 2, Al: 3, Si: 4, P: 5, S: 6, Cl: 7, Ar: 8,
+  K: 1, Ca: 2, Ga: 3, Ge: 4, As: 5, Se: 6, Br: 7, Kr: 8,
+  Rb: 1, Sr: 2, In: 3, Sn: 4, Sb: 5, Te: 6, I: 7, Xe: 8,
+  Cs: 1, Ba: 2, Tl: 3, Pb: 4,
+};
+
+// Ideal angle (radians) between two adjacent bonding domains for a given steric number.
+// 2 → linear (180°), 3 → trigonal (120°), 4 → tetrahedral, compressed to water's 104.5°
+// by lone-pair repulsion, 5+ → ~90°.
+function stericAngle(steric: number): number {
+  const deg = steric <= 2 ? 180 : steric === 3 ? 120 : steric === 4 ? 104.5 : 90;
+  return (deg * Math.PI) / 180;
+}
+
+// Harmonic angle-bending force at vertex c between its bonds to i and j: a soft torque that
+// drives the i–c–j angle toward `target`. Perpendicular impulses on i and j, the reaction
+// on c → linear momentum conserved. `k` is the stiffness, `dt` the substep scale.
+function bendPair(c: Atom, i: Atom, j: Atom, target: number, k: number, dt: number): void {
+  const u1x = i.x - c.x, u1y = i.y - c.y; const r1 = Math.hypot(u1x, u1y) || 1e-6;
+  const u2x = j.x - c.x, u2y = j.y - c.y; const r2 = Math.hypot(u2x, u2y) || 1e-6;
+  const n1x = u1x / r1, n1y = u1y / r1, n2x = u2x / r2, n2y = u2y / r2;
+  const dot = Math.max(-1, Math.min(1, n1x * n2x + n1y * n2y));
+  const err = Math.acos(dot) - target;         // + = angle too wide, − = too narrow
+  if (Math.abs(err) < 1e-3) return;
+  // tangent on i: component of n2 perpendicular to n1 (points toward j → moving i here
+  // narrows the angle). Fall back to a fixed perpendicular when the bonds are collinear.
+  let t1x = n2x - dot * n1x, t1y = n2y - dot * n1y; let t1m = Math.hypot(t1x, t1y);
+  if (t1m < 1e-4) { t1x = -n1y; t1y = n1x; t1m = 1; }
+  t1x /= t1m; t1y /= t1m;
+  let t2x = n1x - dot * n2x, t2y = n1y - dot * n2y; let t2m = Math.hypot(t2x, t2y);
+  if (t2m < 1e-4) { t2x = -n2y; t2y = n2x; t2m = 1; }
+  t2x /= t2m; t2y /= t2m;
+  const m = k * err * dt;                        // err>0 → push both inward (narrow), <0 → outward
+  const fix = t1x * m, fiy = t1y * m, fjx = t2x * m, fjy = t2y * m;
+  i.vx += fix / (i.el.mass / 16); i.vy += fiy / (i.el.mass / 16);
+  j.vx += fjx / (j.el.mass / 16); j.vy += fjy / (j.el.mass / 16);
+  c.vx -= (fix + fjx) / (c.el.mass / 16); c.vy -= (fiy + fjy) / (c.el.mass / 16);
+}
+
 // --- energy-conserving reactions (J6) --------------------------------------
 // Formation is exothermic: EXO_FRACTION of the bond energy becomes fragment kinetic
 // energy; breaking is endothermic: the bond energy is consumed from the pair's relative
@@ -406,6 +462,29 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
         const dampAmt = rv * (1 - BOND_DAMP) * 0.5;
         a.vx += ux * dampAmt; a.vy += uy * dampAmt;
         b.vx -= ux * dampAmt; b.vy -= uy * dampAmt;
+      }
+
+      // VSEPR bond-angle geometry: push each central atom's bonds toward the angle its
+      // steric number wants. Multiple bonds count as one domain (a double bond is one
+      // direction), so CO₂'s carbon reads as 2 domains → linear, water's oxygen as 4 → bent.
+      for (const c of atoms) {
+        if (c.bonds.length < 2) continue;
+        const neighbors = c.bonds.map(bd => (bd.a === c ? bd.b : bd.a));
+        const val = VALENCE[c.el.symbol];
+        if (neighbors.length === 2) {
+          // lone pairs = (valence − bonding electrons)/2; steric = domains + lone pairs
+          const lone = val === undefined ? 0 : Math.max(0, Math.round((val - bondLoad(c)) / 2));
+          const target = val === undefined ? Math.PI : stericAngle(2 + lone);
+          bendPair(c, neighbors[0], neighbors[1], target, ANGLE_K, dt);
+        } else {
+          // 3+ domains: spread evenly in the plane (planar projection of trigonal/tetrahedral)
+          const target = (2 * Math.PI) / neighbors.length;
+          const sorted = neighbors.slice().sort(
+            (p, q) => Math.atan2(p.y - c.y, p.x - c.x) - Math.atan2(q.y - c.y, q.x - c.x));
+          for (let k = 0; k < sorted.length; k++) {
+            bendPair(c, sorted[k], sorted[(k + 1) % sorted.length], target, ANGLE_K, dt);
+          }
+        }
       }
 
       // integrate + walls (wall bounces deposit momentum → pressure measurement)
