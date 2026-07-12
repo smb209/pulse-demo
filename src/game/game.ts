@@ -5,6 +5,7 @@ import { createSim, drawRadius, type Atom } from '../sim';
 import { BY_SYMBOL } from '../elements';
 import { formulaOf, analyzeMolecules } from '../chemistry';
 import { TOOL_TYPES, LEVELS } from './content';
+import { getOne, TEST_KEY } from './levelStore';
 import type { LevelDef, ToolInstance } from './types';
 
 const SUBS = '₀₁₂₃₄₅₆₇₈₉';
@@ -16,8 +17,25 @@ interface Zone { id: string; px: number; py: number; pw: number; ph: number; lab
 export function initGame(): void {
   injectStyles();
   const params = new URLSearchParams(location.search);
-  const levelIdx = Math.max(0, Math.min(LEVELS.length - 1, (parseInt(params.get('level') || '1', 10) || 1) - 1));
-  const level = LEVELS[levelIdx];
+  // Level source: a live "test this level" hand-off from the editor (sessionStorage), a saved
+  // custom level (?custom=<id>), or a built-in campaign level (?level=N, default).
+  let level: LevelDef = LEVELS[0];
+  let source: 'builtin' | 'test' | 'custom' = 'builtin';
+  let levelIdx = 0;
+  const testRaw = params.has('test') ? sessionStorage.getItem(TEST_KEY) : null;
+  if (testRaw) {
+    try { level = JSON.parse(testRaw) as LevelDef; source = 'test'; } catch { /* fall through to builtin */ }
+  } else if (params.get('custom')) {
+    const rec = getOne(params.get('custom')!);
+    if (rec) { level = rec.def; source = 'custom'; }
+  } else {
+    levelIdx = Math.max(0, Math.min(LEVELS.length - 1, (parseInt(params.get('level') || '1', 10) || 1) - 1));
+    level = LEVELS[levelIdx];
+  }
+  // where the "back" links go: to the editor when testing, else the sandbox
+  const backHref = source === 'test' ? `${location.pathname}?game=1&editor=1` : location.pathname;
+  const backLabel = source === 'test' ? '◂ Editor' : 'Sandbox';
+  const hasNext = source === 'builtin' && levelIdx < LEVELS.length - 1;
 
   const canvas = document.getElementById('stage') as HTMLCanvasElement;
   const ctx = canvas.getContext('2d')!;
@@ -86,7 +104,12 @@ export function initGame(): void {
     return { type, x, y, angle: angle || tt.defaults.angle || 0, radius: tt.defaults.radius, strength: tt.defaults.strength, color: tt.color, fixed };
   }
   function loadTools(): void {
-    tools = (level.preplaced ?? []).map(p => mkTool(p.type, p.x * W, p.y * H, p.angle, p.fixed));
+    tools = (level.preplaced ?? []).map(p => {
+      const t = mkTool(p.type, p.x * W, p.y * H, p.angle, p.fixed);
+      if (p.radius != null) t.radius = p.radius;
+      if (p.strength != null) t.strength = p.strength;
+      return t;
+    });
   }
   loadTools();
 
@@ -221,7 +244,7 @@ export function initGame(): void {
   });
 
   // --- HUD ------------------------------------------------------------------
-  const hud = buildHUD(level, levelIdx, levelIdx < LEVELS.length - 1);
+  const hud = buildHUD(level, levelIdx, hasNext, backHref, backLabel);
   function syncPalette(): void {
     for (const btn of hud.paletteBtns) {
       const type = btn.dataset.type!;
@@ -403,7 +426,7 @@ interface HUD {
   replayBtn: HTMLElement; nextBtn: HTMLElement | null;
 }
 
-function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
+function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean, backHref: string, backLabel: string): HUD {
   const root = document.createElement('div');
   root.id = 'gameHUD';
   const palette = level.palette.map(p => {
@@ -430,7 +453,7 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
         <button class="pl-btn primary" id="gStart">▶ Start reaction</button>
         <button class="pl-btn ghost" id="gClear">Clear</button>
         <button class="pl-btn ghost" id="gReset">Reset run</button>
-        <a class="pl-btn ghost" href="${location.pathname}">Sandbox</a>
+        <a class="pl-btn ghost" href="${backHref}">${backLabel}</a>
       </div>
     </div>
     <div id="gWin">
@@ -442,7 +465,7 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
         <div class="g-card-row">
           <button class="pl-btn" id="gReplay">Retry</button>
           ${hasNext ? `<a class="pl-btn" id="gNext" href="${nextHref}">Next level ▸</a>` : ''}
-          <a class="pl-btn ghost" href="${location.pathname}">Sandbox</a>
+          <a class="pl-btn ghost" href="${backHref}">${backLabel}</a>
         </div>
       </div>
     </div>

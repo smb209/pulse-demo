@@ -61,7 +61,9 @@ export interface ZoneDef {
   label?: string;
 }
 
-export interface PlacedToolDef { type: string; x: number; y: number; angle?: number; fixed?: boolean; }
+// Preplaced tool on the board. radius/strength are optional overrides of the tool's
+// defaults (the editor tunes them per-instance); omitted → TOOL_TYPES[type].defaults.
+export interface PlacedToolDef { type: string; x: number; y: number; angle?: number; radius?: number; strength?: number; fixed?: boolean; }
 
 export interface ObjectiveDef {
   kind: 'collect';

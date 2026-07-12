@@ -92,9 +92,32 @@ max from the balanced equation). This retired the cap/par balance hacks:
   **Water is inherently low-yield & noisy in this sim (~3–5 of 54 theoretical)** — objective
   set to 3 so the catalyst reliably clears it; 3-star is a stretch. This is the honest ceiling.
 
+## Level editor — SHIPPED (2026-07-12)
+
+`?game=1&editor=1` boots a data-driven level editor (`src/game/editor.ts`, store in
+`src/game/levelStore.ts`). It emits the same `LevelDef` the engine consumes and reuses the
+real `TOOL_TYPES` draw calls, so the build preview matches play exactly.
+
+- **Touch-first placement** (the pixel-perfect-tap problem): tap a palette item → tap the
+  board to drop it roughly; it auto-selects and every property is editable via an **inspector
+  of paired sliders + number boxes** — no finger ever covers the target. Dragging on a touch
+  screen lifts the object ~44px above the fingertip with a connector line so it stays visible.
+- **Edits**: tools (position/radius/strength/angle/fixed), emitters (element/pos/angle/mols/
+  rate/speed/spread/aimable), zones (label/pos/size), and level **settings** (name, blurb,
+  featured, reaction, fact, **ambient temperature**, cap, collisions, settle, board size,
+  objective formula+count, and the player's palette with per-tool limits).
+- **Persistence**: Save/Load to `localStorage` (`pulse.customLevels`), Export/Import JSON to
+  share. Draft autosaves to `sessionStorage` so it survives reloads.
+- **Test** hands the draft to the engine via `sessionStorage` → `?game=1&test=1`, with a
+  "◂ Editor" button back. Saved levels play at `?game=1&custom=<id>`.
+- Data-model add: `PlacedToolDef` gained optional `radius`/`strength` overrides (backward
+  compatible) so preplaced tools are fully tunable, and `game.ts` resolves test/custom/builtin
+  level sources.
+
 ## Deferred / to-do
 
-- [ ] **Level select screen** (currently `?level=N` + a Next button on win).
+- [ ] **Level select screen** (currently `?level=N` + a Next button on win); the editor's Load
+      dialog is the custom-level browser for now.
 - [ ] **Placement restrictions** — allow a tool only inside a marked region, or cap material
       introduced per region. Data model: per-palette-entry `placeIn` rect(s).
 - [ ] **Re-aim existing tools** — dragging a placed tool only moves it; add a rim handle to

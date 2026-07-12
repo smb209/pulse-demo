@@ -557,7 +557,11 @@ setView(mobileView);
 
 if (GAME_MODE) {
   document.body.classList.add('game');
-  import('./game/game').then(m => m.initGame()).catch(err => console.error('Game failed to load', err));
+  if (new URLSearchParams(location.search).has('editor')) {
+    import('./game/editor').then(m => m.initEditor()).catch(err => console.error('Editor failed to load', err));
+  } else {
+    import('./game/game').then(m => m.initGame()).catch(err => console.error('Game failed to load', err));
+  }
 } else {
   initSandbox();
 }
