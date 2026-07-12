@@ -72,6 +72,7 @@ export interface LevelDef {
   name: string;
   blurb: string;
   featured?: string;   // element this level introduces (periodic-table progression)
+  reaction?: string;   // the balanced equation this level realises, e.g. '2 H₂ + O₂ → 2 H₂O'
   fact?: string;       // a real scientific fact tied to the reaction/method
   board?: { w: number; h: number };  // fixed logical size (default 960×600), letterboxed
   cap: number;

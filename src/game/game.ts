@@ -292,7 +292,7 @@ export function initGame(): void {
   // Dev handle for headless verification (backgrounded preview tabs suspend rAF).
   (window as unknown as { __game: unknown }).__game = {
     tick: (ms = 16.67, n = 1) => { for (let i = 0; i < n; i++) tick(ms); return { collected, atoms: sim.atoms.length }; },
-    place: (type: string, xf: number, yf: number) => { tools.push(mkTool(type, xf * W, yf * H)); syncPalette(); },
+    place: (type: string, xf: number, yf: number, angleDeg?: number) => { const t = mkTool(type, xf * W, yf * H); if (angleDeg != null) t.angle = angleDeg * Math.PI / 180; tools.push(t); syncPalette(); },
     clear: () => { tools = tools.filter(t => t.fixed); syncPalette(); },
     report: () => analyzeMolecules(sim.bonds).molecules,
     tools: () => tools.map(t => ({ type: t.type, angle: +t.angle.toFixed(2), strength: +t.strength.toFixed(2), radius: Math.round(t.radius) })),
@@ -322,6 +322,7 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
   root.innerHTML = `
     <div id="gTop">
       <div class="g-title">${level.name}${level.featured ? ` <span class="g-el">${level.featured}</span>` : ''}</div>
+      ${level.reaction ? `<div class="g-rxn">${level.reaction}</div>` : ''}
       <div class="g-obj">Collect <b>${level.objective.count}</b> ${objLabel(level)} · <span id="gProg">0 / ${level.objective.count}</span> · <span id="gTime">0s</span></div>
       <div class="g-blurb">${level.blurb}</div>
     </div>
@@ -379,6 +380,7 @@ function injectStyles(): void {
     #gTop .g-obj b { color: var(--primary); }
     #gTop .g-obj #gProg { color: var(--text); font-variant-numeric: tabular-nums; }
     #gTop .g-el { font-size: 0.7rem; font-weight: 700; color: var(--bg); background: var(--accent); border-radius: 6px; padding: 1px 6px; vertical-align: middle; -webkit-background-clip: border-box; background-clip: border-box; }
+    #gTop .g-rxn { font-size: 0.82rem; font-weight: 600; color: var(--primary); letter-spacing: 0.04em; margin-top: 2px; font-variant-ligatures: none; }
     #gTop .g-blurb { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; max-width: min(560px, calc(100vw - 30px)); line-height: 1.35; }
     #gBottom { position: fixed; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(560px, calc(100vw - 20px)); }
     #gBottom .g-hint { font-size: 0.64rem; color: var(--text-muted); letter-spacing: 0.04em; }

@@ -147,7 +147,7 @@ export const TOOL_TYPES: Record<string, ToolType> = {
     id: 'shredder', name: 'Shredder', color: '#FF5470',
     blurb: 'Snaps every bond passing through — a photodissociation field.',
     defaults: { radius: 66, strength: 1 },
-    breakBoost(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 80 : 1; },
+    breakBoost(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 160 : 1; },
     draw(ctx, t, selected) {
       ctx.save();
       ctx.strokeStyle = t.color; ctx.globalAlpha = selected ? 0.95 : 0.7;
@@ -210,31 +210,35 @@ export const LEVELS: LevelDef[] = [
   {
     id: 'hydrogen-run',
     name: 'Hydrogen Run',
-    blurb: 'Bond hydrogen into H₂ and funnel the gas into the tank.',
+    blurb: 'Fan the hydrogen up and over into the corner tank before it disperses — H₂ that drifts is recycled.',
     featured: 'H',
+    reaction: 'H + H → H₂',
     fact: 'Hydrogen is the lightest and most abundant element in the universe — ~90% of all atoms. Two H atoms share electrons in the simplest possible covalent bond: H₂.',
     board: { w: 960, h: 600 },
-    cap: 150,
+    cap: 80,
     temperature: 34,
     collisions: false,
+    // emitters spray along the bottom; the tank is up in the top-right corner, so the gas
+    // never drifts there on its own — you must fan it up and over.
     emitters: [
-      { element: 'H', x: 0.05, y: 0.34, angle: 0.16, rate: 14, speed: 2.0, spread: 0.12 },
-      { element: 'H', x: 0.05, y: 0.50, angle: 0, rate: 14, speed: 2.0, spread: 0.12 },
-      { element: 'H', x: 0.05, y: 0.66, angle: -0.16, rate: 14, speed: 2.0, spread: 0.12 },
+      { element: 'H', x: 0.05, y: 0.64, angle: 0, rate: 14, speed: 2.2, spread: 0.1 },
+      { element: 'H', x: 0.05, y: 0.76, angle: 0, rate: 14, speed: 2.2, spread: 0.1 },
+      { element: 'H', x: 0.05, y: 0.88, angle: 0, rate: 14, speed: 2.2, spread: 0.1 },
     ],
-    zones: [{ id: 'tank', x: 0.80, y: 0.30, w: 0.16, h: 0.40, label: 'H₂' }],
-    // a shredder hazard mid-field: route around it or your H₂ gets cracked back to atoms
-    preplaced: [{ type: 'shredder', x: 0.52, y: 0.5, fixed: true }],
+    zones: [{ id: 'tank', x: 0.77, y: 0.08, w: 0.19, h: 0.32, label: 'H₂' }],
+    // a shredder squats in the bottom flow path — lift the gas over it or it gets cracked
+    preplaced: [{ type: 'shredder', x: 0.56, y: 0.78, fixed: true }],
     palette: [{ type: 'fan', limit: 4 }, { type: 'catalyst', limit: 2 }, { type: 'deflector', limit: 2 }],
-    objective: { kind: 'collect', formula: 'H2', count: 10 },
-    par: { tools: 4, seconds: 80 },
+    objective: { kind: 'collect', formula: 'H2', count: 8 },
+    par: { tools: 3, seconds: 50 },
   },
   {
     id: 'first-water',
     name: 'First Water',
-    blurb: 'Hydrogen bonds to itself first — cover the mixing zone with the O–H catalyst so oxygen grabs the hydrogen and makes water instead of H₂.',
+    blurb: 'Hydrogen bonds to itself first — cover the mixing zone with the O–H catalyst and fan the water into the tank. A heater helps spark the reaction.',
     featured: 'O',
-    fact: 'Burning hydrogen in oxygen releases huge energy and makes only water — the cleanest fuel there is. But it needs a spark: H₂ and O₂ will sit together unreacted until enough energy breaks their bonds to let O–H form.',
+    reaction: '2 H₂ + O₂ → 2 H₂O',
+    fact: 'Burning hydrogen in oxygen releases huge energy and makes only water — the cleanest fuel there is. Rocket engines run on exactly this: liquid H₂ + liquid O₂ → H₂O and enormous thrust.',
     board: { w: 960, h: 600 },
     cap: 260,
     temperature: 22,
@@ -245,10 +249,10 @@ export const LEVELS: LevelDef[] = [
       { element: 'O', x: 0.05, y: 0.50, angle: 0, rate: 11, speed: 1.5, spread: 0.12 },
     ],
     zones: [{ id: 'tank', x: 0.58, y: 0.24, w: 0.20, h: 0.52, label: 'H₂O' }],
-    // a contaminant patch that adsorbs drifting atoms — keep your stream clear of it
-    preplaced: [{ type: 'getter', x: 0.46, y: 0.78, fixed: true }],
+    // a contaminant patch off to the side — keep your stream clear of it
+    preplaced: [{ type: 'getter', x: 0.44, y: 0.82, fixed: true }],
     palette: [{ type: 'ohcat', limit: 2 }, { type: 'heater', limit: 2 }, { type: 'fan', limit: 3 }, { type: 'cooler', limit: 1 }],
     objective: { kind: 'collect', formula: 'H2O', count: 5 },
-    par: { tools: 5, seconds: 120 },
+    par: { tools: 4, seconds: 90 },
   },
 ];

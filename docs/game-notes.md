@@ -49,17 +49,44 @@ Aiming: press-drag on placement sets direction (fan) or intensity/size (others),
 - **Turbulent mixer** — inject relative velocity (fixes co-moving streams that won't react).
 - **Cold trap / condenser** — phase-selective collection.
 
+## Balance pass (2026-07-12)
+
+- **L1 fixed.** Was self-solving (baseline 9/10 by pure diffusion). Root cause: over a long
+  run, gas diffuses to *any* tank. Fix = **low cap (80)** so the sim recycles the oldest
+  atoms fast → gas can't slowly drift across the board; only *actively fanned* gas reaches
+  the tank. Layout: emitters along the bottom, tank in the top-right corner, shredder in the
+  bottom flow path. Baseline now 0; a 3-fan lift wins. par tightened to {3, 50}.
+- **L2 (First Water) is winnable but not tightly gated.** The H–O affinity is strong, so
+  water forms readily via attraction — you *cannot* make the selective catalyst required for
+  *formation* without fighting the chemistry, and low-cap recycling kills water before it
+  crosses to a distant tank. Current compromise: cap 260 + cool ambient (water persists) +
+  tank near the mixing zone; baseline 0 (needs routing), catalyst+heater+fan wins. Fans-only
+  is marginal (~4/5). This is the honest ceiling without the reactant-budget idea below.
+
+## Next big lever — reaction equations + reactant budget (operator idea, 2026-07-12)
+
+Both levels now carry a balanced `reaction` equation (shown in the HUD). The **mols/reactant
+budget** idea would fix the balance tension *and* ground the star rating:
+
+- Emitters emit a **finite budget** of reactant atoms (in "mols"/units), then stop — instead
+  of infinite streams. No more "wait long enough and diffusion wins".
+- Stars = **yield / atom economy**: product collected vs the stoichiometric maximum the
+  budget allows (from the balanced equation). Wasting reactants (byproducts, adsorbed by a
+  getter, cracked by a shredder, recycled) costs stars.
+- Makes tools genuinely required (limited material → must convert efficiently before it runs
+  out) and teaches real stoichiometry / limiting-reagent thinking.
+- Data model: `LevelDef.budget` (per-element mols) + emitters draw from it; track consumed;
+  compute theoretical max product from the equation; score = collected / theoretical.
+
 ## Deferred / to-do
 
+- [ ] **Reactant budget + yield-based stars** (above) — the priority; supersedes ad-hoc
+      cap/par balance and grounds scoring in real stoichiometry.
 - [ ] **Level select screen** (currently `?level=N` + a Next button on win).
 - [ ] **Placement restrictions** — allow a tool only inside a marked region, or cap material
-      introduced per region (operator idea). Data model: per-palette-entry `placeIn` rect(s).
-- [ ] **Re-aim existing tools** — dragging a placed tool currently only moves it. Add a rim
-      handle to rotate/rescale vs a centre handle to move.
-- [ ] **Balance pass** — level 1 & 2 are winnable but tools optimise more than hard-gate; add
-      byproduct penalties and tighter pars for real puzzle pressure.
-- [ ] **First Water tuning** — verify the heat + O–H-catalyst solution reliably beats the
-      H₂-hogs-hydrogen problem across placements.
+      introduced per region. Data model: per-palette-entry `placeIn` rect(s).
+- [ ] **Re-aim existing tools** — dragging a placed tool only moves it; add a rim handle to
+      rotate/rescale vs a centre handle to move.
 - [ ] **Charged-region level** (pairs with ionizer) so electric fields actually shine.
 - [ ] **Persist stars per level** (localStorage) once there's a level select.
 
