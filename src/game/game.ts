@@ -57,11 +57,17 @@ export function initGame(): void {
     // (tank, emitters) so the centred title/palette don't occlude it.
     const vw = window.visualViewport?.width ?? window.innerWidth;
     const vh = window.visualViewport?.height ?? window.innerHeight;
-    const scale = Math.min(vw / W, vh / H);
+    // Wide + short (phone landscape): the board letterboxes with side margins, so dock the
+    // controls in a left column and anchor the board to its right. Must match the CSS panel.
+    const sideCol = vh < 480 && vw / vh > 1.7;
+    const panelW = sideCol ? 154 : 0;
+    const availW = vw - panelW;
+    const scale = Math.min(availW / W, vh / H);
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.position = 'fixed'; canvas.style.inset = 'auto';
-    canvas.style.left = '50%'; canvas.style.top = '50%';
     canvas.style.transform = 'translate(-50%, -50%)';
+    canvas.style.left = sideCol ? (panelW + availW / 2) + 'px' : '50%';
+    canvas.style.top = sideCol ? (vh / 2) + 'px' : '50%';
     canvas.style.width = (W * scale) + 'px'; canvas.style.height = (H * scale) + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -538,6 +544,17 @@ function injectStyles(): void {
       #gWin .g-card { padding: 14px 20px; gap: 7px; width: min(400px, calc(100vw - 24px)); }
       #gStars { font-size: 1.5rem; }
       #gFact { padding-top: 8px; font-size: 0.72rem; }
+    }
+    /* wide + short (phone landscape): dock the controls into a left column, board to its right */
+    @media (orientation: landscape) and (max-height: 480px) and (min-aspect-ratio: 17/10) {
+      #gCond { top: 6px; left: 6px; flex-direction: row; gap: 5px; }
+      #gTop { top: 44px; left: 6px; right: auto; transform: none; text-align: left; width: 142px; }
+      #gTop .g-title { font-size: 0.76rem; }
+      #gTop .g-rxn, #gTop .g-obj { font-size: 0.64rem; margin-top: 1px; }
+      #gBottom { top: 106px; bottom: auto; left: 6px; right: auto; transform: none; width: 142px; align-items: stretch; gap: 5px; }
+      #gBottom .g-row { flex-direction: column; align-items: stretch; gap: 5px; width: 100%; }
+      #gBottom .pl-btn { justify-content: flex-start; padding: 6px 9px; font-size: 0.68rem; }
+      #gBottom .pl-btn .pl-count { margin-left: auto; }
     }
   `;
   document.head.appendChild(s);
