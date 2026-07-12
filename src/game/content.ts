@@ -249,8 +249,9 @@ export const LEVELS: LevelDef[] = [
       { element: 'H', x: 0.05, y: 0.66, angle: -0.30, mols: 54, rate: 20, speed: 1.9, spread: 0.1, aimable: true },
       { element: 'O', x: 0.05, y: 0.50, angle: 0, mols: 54, rate: 20, speed: 1.7, spread: 0.1, aimable: true },
     ],
-    // the whole chamber is the collector — any water made in it counts
-    zones: [{ id: 'tank', x: 0.24, y: 0.10, w: 0.72, h: 0.80, label: 'H₂O — whole chamber' }],
+    // the reaction chamber is the collector — any water made in it counts (kept wide enough
+    // on the left to cover the mixing zone, but lowered so it clears the HUD text)
+    zones: [{ id: 'tank', x: 0.22, y: 0.20, w: 0.62, h: 0.58, label: 'H₂O' }],
     // a contaminant patch in the corner — atoms it adsorbs are lost from your budget
     preplaced: [{ type: 'getter', x: 0.84, y: 0.84, fixed: true }],
     palette: [{ type: 'ohcat', limit: 3 }, { type: 'heater', limit: 2 }, { type: 'fan', limit: 3 }, { type: 'cooler', limit: 1 }],

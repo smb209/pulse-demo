@@ -284,6 +284,7 @@ export function initGame(): void {
     const emittedTotal = emitters.reduce((s, e) => s + e.emitted, 0);
     const molsTotal = emitters.reduce((s, e) => s + e.mols, 0);
     hud.timer.textContent = phase === 'run' ? `${emittedTotal}/${molsTotal} mol` : `${molsTotal} mol`;
+    hud.pres.textContent = phase === 'setup' ? '—' : (sim.stats().pressure * 1000).toFixed(1);
     requestAnimationFrame(frame);
   }
 
@@ -383,7 +384,7 @@ export function initGame(): void {
 
 interface HUD {
   paletteBtns: HTMLButtonElement[];
-  progress: HTMLElement; timer: HTMLElement;
+  progress: HTMLElement; timer: HTMLElement; temp: HTMLElement; pres: HTMLElement;
   startBtn: HTMLElement; resetBtn: HTMLElement; clearBtn: HTMLElement;
   winWrap: HTMLElement; winTitle: HTMLElement; winStars: HTMLElement; winMeta: HTMLElement; fact: HTMLElement;
   replayBtn: HTMLElement; nextBtn: HTMLElement | null;
@@ -399,6 +400,10 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
   }).join('');
   const nextHref = `${location.pathname}?game=1&level=${levelIdx + 2}`;
   root.innerHTML = `
+    <div id="gCond">
+      <div class="cond"><span>Temp</span><b id="gTemp">${level.temperature}°</b></div>
+      <div class="cond"><span>Press</span><b id="gPres">—</b></div>
+    </div>
     <div id="gTop">
       <div class="g-title">${level.name}${level.featured ? ` <span class="g-el">${level.featured}</span>` : ''}</div>
       ${level.reaction ? `<div class="g-rxn">${level.reaction}</div>` : ''}
@@ -433,6 +438,8 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
     paletteBtns: [...root.querySelectorAll<HTMLButtonElement>('.pl-btn[data-type]')],
     progress: root.querySelector('#gProg')!,
     timer: root.querySelector('#gTime')!,
+    temp: root.querySelector('#gTemp')!,
+    pres: root.querySelector('#gPres')!,
     startBtn: root.querySelector('#gStart')!,
     resetBtn: root.querySelector('#gReset')!,
     clearBtn: root.querySelector('#gClear')!,
@@ -458,6 +465,10 @@ function injectStyles(): void {
     body.game #molechart, body.game #gasHUD, body.game #viewCycle, body.game #hint { display: none !important; }
     #gameHUD { position: fixed; inset: 0; z-index: 20; pointer-events: none; font-family: -apple-system, system-ui, sans-serif; }
     #gameHUD button, #gameHUD a { pointer-events: auto; }
+    #gCond { position: fixed; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 6px; user-select: none; }
+    #gCond .cond { display: flex; align-items: baseline; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+    #gCond .cond span { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+    #gCond .cond b { font-size: 0.82rem; color: var(--primary); font-variant-numeric: tabular-nums; font-weight: 600; }
     #gTop { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); text-align: center; user-select: none; }
     #gTop .g-title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
       background: linear-gradient(100deg, var(--primary), var(--secondary), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
