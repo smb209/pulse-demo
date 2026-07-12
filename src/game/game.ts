@@ -15,7 +15,9 @@ interface Zone { id: string; px: number; py: number; pw: number; ph: number; lab
 
 export function initGame(): void {
   injectStyles();
-  const level = LEVELS[0];
+  const params = new URLSearchParams(location.search);
+  const levelIdx = Math.max(0, Math.min(LEVELS.length - 1, (parseInt(params.get('level') || '1', 10) || 1) - 1));
+  const level = LEVELS[levelIdx];
 
   const canvas = document.getElementById('stage') as HTMLCanvasElement;
   const ctx = canvas.getContext('2d')!;
@@ -75,7 +77,8 @@ export function initGame(): void {
 
   sim.setEnvironment({
     force(a, dt) { for (const t of tools) TOOL_TYPES[t.type].force?.(t, a, dt); },
-    formBoost(x, y) { let m = 1; for (const t of tools) { const b = TOOL_TYPES[t.type].formBoost?.(t, x, y); if (b) m *= b; } return m; },
+    formBoost(x, y, sa, sb) { let m = 1; for (const t of tools) { const b = TOOL_TYPES[t.type].formBoost?.(t, x, y, sa, sb); if (b !== undefined) m *= b; } return m; },
+    breakBoost(x, y) { let m = 1; for (const t of tools) { const b = TOOL_TYPES[t.type].breakBoost?.(t, x, y); if (b !== undefined) m *= b; } return m; },
   });
 
   // --- game state -----------------------------------------------------------
@@ -167,7 +170,7 @@ export function initGame(): void {
   });
 
   // --- HUD ------------------------------------------------------------------
-  const hud = buildHUD(level);
+  const hud = buildHUD(level, levelIdx, levelIdx < LEVELS.length - 1);
   function syncPalette(): void {
     for (const btn of hud.paletteBtns) {
       const type = btn.dataset.type!;
@@ -188,6 +191,7 @@ export function initGame(): void {
   function showWin(stars: number, usedTools: number): void {
     hud.winStars.textContent = '★★★'.slice(0, stars) + '☆☆☆'.slice(0, 3 - stars);
     hud.winMeta.textContent = `${Math.round(elapsed)}s · ${usedTools} tool${usedTools === 1 ? '' : 's'}`;
+    hud.fact.textContent = level.fact ? `Did you know? ${level.fact}` : '';
     hud.winWrap.style.display = 'flex';
   }
   function hideWin(): void { hud.winWrap.style.display = 'none'; }
@@ -205,6 +209,12 @@ export function initGame(): void {
       }
     });
     sim.step(dtMs);
+    // contaminant getters adsorb atoms drifting through them
+    for (const t of tools) {
+      const ad = TOOL_TYPES[t.type].adsorb;
+      if (!ad) continue;
+      for (const a of [...sim.atoms]) if (Math.random() < ad(t, a.x, a.y)) sim.despawn(a);
+    }
     collectTimer += dtMs;
     if (collectTimer >= 200) { collectTimer = 0; collect(); }
   }
@@ -288,7 +298,7 @@ export function initGame(): void {
     tools: () => tools.map(t => ({ type: t.type, angle: +t.angle.toFixed(2), strength: +t.strength.toFixed(2), radius: Math.round(t.radius) })),
     inTank: () => sim.atoms.filter(a => zones.some(z => a.x >= z.px && a.x <= z.px + z.pw && a.y >= z.py && a.y <= z.py + z.ph)).length,
     hist: () => { const b = new Array(10).fill(0); for (const a of sim.atoms) b[Math.min(9, Math.max(0, Math.floor(a.x / W * 10)))]++; return b; },
-    state: () => ({ collected, won, atoms: sim.atoms.length, bonds: sim.bonds.length, tools: tools.length, elapsed: Math.round(elapsed) }),
+    state: () => ({ collected, won, atoms: sim.atoms.length, bonds: sim.bonds.length, tools: tools.length, ke: +sim.stats().meanKE.toFixed(2), elapsed: Math.round(elapsed) }),
   };
 }
 
@@ -297,10 +307,10 @@ export function initGame(): void {
 interface HUD {
   paletteBtns: HTMLButtonElement[];
   progress: HTMLElement; timer: HTMLElement; resetBtn: HTMLElement;
-  winWrap: HTMLElement; winStars: HTMLElement; winMeta: HTMLElement; replayBtn: HTMLElement;
+  winWrap: HTMLElement; winStars: HTMLElement; winMeta: HTMLElement; fact: HTMLElement; replayBtn: HTMLElement;
 }
 
-function buildHUD(level: LevelDef): HUD {
+function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
   const root = document.createElement('div');
   root.id = 'gameHUD';
   const palette = level.palette.map(p => {
@@ -308,10 +318,12 @@ function buildHUD(level: LevelDef): HUD {
     return `<button class="pl-btn" data-type="${p.type}" title="${t.blurb}">
       <span class="pl-dot" style="background:${t.color}"></span>${t.name}<span class="pl-count">${p.limit}</span></button>`;
   }).join('');
+  const nextHref = `${location.pathname}?game=1&level=${levelIdx + 2}`;
   root.innerHTML = `
     <div id="gTop">
-      <div class="g-title">${level.name}</div>
+      <div class="g-title">${level.name}${level.featured ? ` <span class="g-el">${level.featured}</span>` : ''}</div>
       <div class="g-obj">Collect <b>${level.objective.count}</b> ${objLabel(level)} · <span id="gProg">0 / ${level.objective.count}</span> · <span id="gTime">0s</span></div>
+      <div class="g-blurb">${level.blurb}</div>
     </div>
     <div id="gBottom">
       <div class="g-hint">tap a tool · press &amp; drag to place + aim · drag to move · double-tap to remove</div>
@@ -326,8 +338,12 @@ function buildHUD(level: LevelDef): HUD {
         <div class="g-win-title">Level complete</div>
         <div id="gStars">★★★</div>
         <div id="gWinMeta"></div>
-        <button class="pl-btn" id="gReplay">Play again</button>
-        <a class="pl-btn ghost" href="${location.pathname}">Back to sandbox</a>
+        <div id="gFact"></div>
+        <div class="g-card-row">
+          <button class="pl-btn" id="gReplay">Replay</button>
+          ${hasNext ? `<a class="pl-btn" id="gNext" href="${nextHref}">Next level ▸</a>` : ''}
+          <a class="pl-btn ghost" href="${location.pathname}">Sandbox</a>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(root);
@@ -339,6 +355,7 @@ function buildHUD(level: LevelDef): HUD {
     winWrap: root.querySelector('#gWin')!,
     winStars: root.querySelector('#gStars')!,
     winMeta: root.querySelector('#gWinMeta')!,
+    fact: root.querySelector('#gFact')!,
     replayBtn: root.querySelector('#gReplay')!,
   };
 }
@@ -361,6 +378,8 @@ function injectStyles(): void {
     #gTop .g-obj { font-size: 0.82rem; color: var(--text-muted); margin-top: 3px; }
     #gTop .g-obj b { color: var(--primary); }
     #gTop .g-obj #gProg { color: var(--text); font-variant-numeric: tabular-nums; }
+    #gTop .g-el { font-size: 0.7rem; font-weight: 700; color: var(--bg); background: var(--accent); border-radius: 6px; padding: 1px 6px; vertical-align: middle; -webkit-background-clip: border-box; background-clip: border-box; }
+    #gTop .g-blurb { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; max-width: min(560px, calc(100vw - 30px)); line-height: 1.35; }
     #gBottom { position: fixed; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(560px, calc(100vw - 20px)); }
     #gBottom .g-hint { font-size: 0.64rem; color: var(--text-muted); letter-spacing: 0.04em; }
     #gBottom .g-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
@@ -375,11 +394,13 @@ function injectStyles(): void {
     .pl-count { font-variant-numeric: tabular-nums; color: var(--text-muted); min-width: 12px; text-align: center; }
     .pl-btn.selected .pl-count { color: var(--primary); }
     #gWin { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(10,12,12,0.6); backdrop-filter: blur(4px); }
-    #gWin .g-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 34px;
-      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); }
+    #gWin .g-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 26px 30px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); width: min(420px, calc(100vw - 32px)); text-align: center; }
     .g-win-title { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.06em; color: var(--text); }
     #gStars { font-size: 2rem; letter-spacing: 0.1em; color: var(--accent); }
-    #gWinMeta { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; }
+    #gWinMeta { font-size: 0.85rem; color: var(--text-muted); }
+    #gFact { font-size: 0.78rem; color: var(--text-muted); line-height: 1.45; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 2px; }
+    #gWin .g-card-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
   `;
   document.head.appendChild(s);
 }

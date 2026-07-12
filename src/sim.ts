@@ -173,7 +173,10 @@ export function restLength(a: { el: ChemElement }, b: { el: ChemElement }): numb
 // knowing anything about tools. Both hooks are optional; default behaviour is unchanged.
 export interface SimEnvironment {
   force?(a: Atom, dt: number): void;
-  formBoost?(x: number, y: number): number;
+  // multiplier on P(form) at a midpoint for a specific element pair (selective catalysts)
+  formBoost?(x: number, y: number, symA: string, symB: string): number;
+  // multiplier on P(break) at a bond's midpoint (shredders / hot zones)
+  breakBoost?(x: number, y: number): number;
 }
 
 export type Sim = ReturnType<typeof createSim>;
@@ -264,7 +267,7 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     const eBond = bondEnergy(a.el, b.el, order);
     let p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b), a.charge, b.charge)
       * captureFactor(e, eBond) * FORM_RATE;
-    if (environment?.formBoost) p *= environment.formBoost((a.x + b.x) / 2, (a.y + b.y) / 2); // catalysts
+    if (environment?.formBoost) p *= environment.formBoost((a.x + b.x) / 2, (a.y + b.y) / 2, a.el.symbol, b.el.symbol); // catalysts
     if (p > 0 && rng() < p) {
       const bd: Bond = { a, b, order, key: pairKey(a.el, b.el) };
       bonds.push(bd);
@@ -420,7 +423,8 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
       for (let i = bonds.length - 1; i >= 0; i--) {
         const bd = bonds[i];
         const e = Math.max(eRel(bd.a, bd.b), bath);
-        const p = bondBreakProbability(bd.a.el, bd.b.el, e, bd.order) * BREAK_RATE * dt;
+        let p = bondBreakProbability(bd.a.el, bd.b.el, e, bd.order) * BREAK_RATE * dt;
+        if (environment?.breakBoost) p *= environment.breakBoost((bd.a.x + bd.b.x) / 2, (bd.a.y + bd.b.y) / 2);
         if (p > 0 && rng() < p) removeBond(bd, true);
       }
 

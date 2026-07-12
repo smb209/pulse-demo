@@ -26,8 +26,13 @@ export interface ToolType {
   defaults: { radius: number; strength: number; angle?: number };
   // extra per-atom force (mutate a.vx/a.vy). Optional.
   force?(t: ToolInstance, a: Atom, dt: number): void;
-  // multiplier on bond-formation probability at a point (catalysts). Optional; default 1.
-  formBoost?(t: ToolInstance, x: number, y: number): number;
+  // multiplier on bond-formation probability for a given element pair (catalysts, selective
+  // catalysts). Optional; default 1.
+  formBoost?(t: ToolInstance, x: number, y: number, symA: string, symB: string): number;
+  // multiplier on bond-break probability at a point (shredders, hot zones). Optional; default 1.
+  breakBoost?(t: ToolInstance, x: number, y: number): number;
+  // per-frame chance (0..1) to adsorb/remove an atom inside the tool (contaminant getters).
+  adsorb?(t: ToolInstance, x: number, y: number): number;
   // set params from a press-drag vector (dx,dy = pointer − tool centre): direction and/or
   // intensity. Optional — tools without it just place on tap.
   aim?(t: ToolInstance, dx: number, dy: number): void;
@@ -66,6 +71,8 @@ export interface LevelDef {
   id: string;
   name: string;
   blurb: string;
+  featured?: string;   // element this level introduces (periodic-table progression)
+  fact?: string;       // a real scientific fact tied to the reaction/method
   board?: { w: number; h: number };  // fixed logical size (default 960×600), letterboxed
   cap: number;
   temperature: number;

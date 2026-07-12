@@ -6,6 +6,18 @@ import type { ToolType, LevelDef } from './types';
 const AIM_RANGE = 150;
 const aimFrac = (dx: number, dy: number) => Math.min(Math.hypot(dx, dy), AIM_RANGE) / AIM_RANGE;
 
+// shared: a soft radial glow + ring, used by field-style tools
+function glowRing(ctx: CanvasRenderingContext2D, t: { x: number; y: number; radius: number }, rgb: string, selected: boolean): void {
+  ctx.save();
+  const g = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.radius);
+  g.addColorStop(0, `rgba(${rgb},0.20)`); g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = `rgb(${rgb})`; ctx.globalAlpha = selected ? 0.95 : 0.55; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
 // --- tools -------------------------------------------------------------------
 // Each tool is pure behaviour + a draw call. `force` pushes atoms; `formBoost`
 // multiplies bond-formation probability. Add a key here and it's instantly placeable
@@ -102,6 +114,94 @@ export const TOOL_TYPES: Record<string, ToolType> = {
       ctx.restore();
     },
   },
+
+  heater: {
+    id: 'heater', name: 'Heater', color: '#EE5A2B',
+    blurb: 'Adds heat — energises collisions and cracks weak bonds.',
+    defaults: { radius: 82, strength: 0.85 },
+    force(t, a, dt) {
+      const dx = a.x - t.x, dy = a.y - t.y;
+      if (dx * dx + dy * dy > t.radius * t.radius) return;
+      const j = t.strength * dt / Math.sqrt(a.el.mass / 16);
+      a.vx += (Math.random() - 0.5) * 2 * j; a.vy += (Math.random() - 0.5) * 2 * j;
+    },
+    aim(t, dx, dy) { t.strength = 0.3 + aimFrac(dx, dy) * 1.5; },
+    draw(ctx, t, selected) { glowRing(ctx, t, '238,90,43', selected); },
+  },
+
+  cooler: {
+    id: 'cooler', name: 'Cooler', color: '#5AA9FF',
+    blurb: 'Removes heat — slows atoms so bonds settle.',
+    defaults: { radius: 82, strength: 0.05 },
+    force(t, a, dt) {
+      const dx = a.x - t.x, dy = a.y - t.y;
+      if (dx * dx + dy * dy > t.radius * t.radius) return;
+      const k = Math.max(0, 1 - t.strength * dt);
+      a.vx *= k; a.vy *= k;
+    },
+    aim(t, dx, dy) { t.strength = 0.02 + aimFrac(dx, dy) * 0.12; },
+    draw(ctx, t, selected) { glowRing(ctx, t, '90,169,255', selected); },
+  },
+
+  shredder: {
+    id: 'shredder', name: 'Shredder', color: '#FF5470',
+    blurb: 'Snaps every bond passing through — a photodissociation field.',
+    defaults: { radius: 66, strength: 1 },
+    breakBoost(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 80 : 1; },
+    draw(ctx, t, selected) {
+      ctx.save();
+      ctx.strokeStyle = t.color; ctx.globalAlpha = selected ? 0.95 : 0.7;
+      ctx.setLineDash([2, 6]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]); ctx.lineWidth = 2.4; ctx.globalAlpha = 0.9;
+      const s = 9;
+      ctx.beginPath();
+      ctx.moveTo(t.x - s, t.y - s); ctx.lineTo(t.x + s, t.y + s);
+      ctx.moveTo(t.x + s, t.y - s); ctx.lineTo(t.x - s, t.y + s);
+      ctx.stroke();
+      ctx.restore();
+    },
+  },
+
+  ohcat: {
+    id: 'ohcat', name: 'O–H Catalyst', color: '#EEC02B',
+    blurb: 'Promotes O–H bonds and suppresses H–H — the trick to making water.',
+    defaults: { radius: 120, strength: 1 },
+    formBoost(t, x, y, sa, sb) {
+      const dx = x - t.x, dy = y - t.y;
+      if (dx * dx + dy * dy > t.radius * t.radius) return 1;
+      const oh = (sa === 'H' && sb === 'O') || (sa === 'O' && sb === 'H');
+      if (oh) return 16;
+      if (sa === 'H' && sb === 'H') return 0.02;
+      return 0.3;
+    },
+    breakBoost(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 0.15 : 1; }, // stabilises the water it makes
+    aim(t, dx, dy) { t.radius = 70 + aimFrac(dx, dy) * 90; },
+    draw(ctx, t, selected) {
+      glowRing(ctx, t, '238,192,43', selected);
+      ctx.save(); ctx.fillStyle = t.color; ctx.globalAlpha = 0.95;
+      ctx.font = '700 12px -apple-system, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('OH', t.x, t.y + 0.5); ctx.restore();
+    },
+  },
+
+  getter: {
+    id: 'getter', name: 'Contaminant', color: '#9C7B4E',
+    blurb: 'A poisoned surface — adsorbs atoms that drift through.',
+    defaults: { radius: 70, strength: 1 },
+    adsorb(t, x, y) { const dx = x - t.x, dy = y - t.y; return (dx * dx + dy * dy <= t.radius * t.radius) ? 0.04 : 0; },
+    draw(ctx, t, selected) {
+      ctx.save();
+      const g = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.radius);
+      g.addColorStop(0, 'rgba(156,123,78,0.30)'); g.addColorStop(1, 'rgba(156,123,78,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = t.color; ctx.globalAlpha = selected ? 0.9 : 0.55;
+      ctx.setLineDash([2, 4]); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    },
+  },
 };
 
 // --- levels ------------------------------------------------------------------
@@ -111,6 +211,8 @@ export const LEVELS: LevelDef[] = [
     id: 'hydrogen-run',
     name: 'Hydrogen Run',
     blurb: 'Bond hydrogen into H₂ and funnel the gas into the tank.',
+    featured: 'H',
+    fact: 'Hydrogen is the lightest and most abundant element in the universe — ~90% of all atoms. Two H atoms share electrons in the simplest possible covalent bond: H₂.',
     board: { w: 960, h: 600 },
     cap: 150,
     temperature: 34,
@@ -121,9 +223,32 @@ export const LEVELS: LevelDef[] = [
       { element: 'H', x: 0.05, y: 0.66, angle: -0.16, rate: 14, speed: 2.0, spread: 0.12 },
     ],
     zones: [{ id: 'tank', x: 0.80, y: 0.30, w: 0.16, h: 0.40, label: 'H₂' }],
-    preplaced: [],
+    // a shredder hazard mid-field: route around it or your H₂ gets cracked back to atoms
+    preplaced: [{ type: 'shredder', x: 0.52, y: 0.5, fixed: true }],
     palette: [{ type: 'fan', limit: 4 }, { type: 'catalyst', limit: 2 }, { type: 'deflector', limit: 2 }],
     objective: { kind: 'collect', formula: 'H2', count: 10 },
-    par: { tools: 4, seconds: 75 },
+    par: { tools: 4, seconds: 80 },
+  },
+  {
+    id: 'first-water',
+    name: 'First Water',
+    blurb: 'Hydrogen bonds to itself first — cover the mixing zone with the O–H catalyst so oxygen grabs the hydrogen and makes water instead of H₂.',
+    featured: 'O',
+    fact: 'Burning hydrogen in oxygen releases huge energy and makes only water — the cleanest fuel there is. But it needs a spark: H₂ and O₂ will sit together unreacted until enough energy breaks their bonds to let O–H form.',
+    board: { w: 960, h: 600 },
+    cap: 260,
+    temperature: 22,
+    collisions: false,
+    emitters: [
+      { element: 'H', x: 0.05, y: 0.38, angle: 0.26, rate: 10, speed: 1.7, spread: 0.12 },
+      { element: 'H', x: 0.05, y: 0.62, angle: -0.26, rate: 10, speed: 1.7, spread: 0.12 },
+      { element: 'O', x: 0.05, y: 0.50, angle: 0, rate: 11, speed: 1.5, spread: 0.12 },
+    ],
+    zones: [{ id: 'tank', x: 0.58, y: 0.24, w: 0.20, h: 0.52, label: 'H₂O' }],
+    // a contaminant patch that adsorbs drifting atoms — keep your stream clear of it
+    preplaced: [{ type: 'getter', x: 0.46, y: 0.78, fixed: true }],
+    palette: [{ type: 'ohcat', limit: 2 }, { type: 'heater', limit: 2 }, { type: 'fan', limit: 3 }, { type: 'cooler', limit: 1 }],
+    objective: { kind: 'collect', formula: 'H2O', count: 5 },
+    par: { tools: 5, seconds: 120 },
   },
 ];
