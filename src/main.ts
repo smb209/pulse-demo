@@ -100,13 +100,13 @@ function setPointer(e: PointerEvent | TouchEvent): void {
 }
 window.addEventListener('pointermove', setPointer);
 window.addEventListener('pointerdown', e => {
-  if ((e.target as Element).closest('#panel')) return;
+  if (e.target !== canvas) return; // only inject when the field itself is tapped, not the UI
   setPointer(e);
   if (sim.burst(e.clientX, e.clientY, 30, injectElement()) < 30) flashAtCap();
 });
 window.addEventListener('pointerleave', () => sim.setPointer({ active: false }));
 window.addEventListener('touchmove', e => {
-  if (!(e.target as Element).closest('#panel')) e.preventDefault();
+  if (e.target === canvas) e.preventDefault();
   setPointer(e);
 }, { passive: false });
 window.addEventListener('touchend', () => sim.setPointer({ active: false }));

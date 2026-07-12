@@ -130,7 +130,9 @@ export function initGame(): void {
 
   // --- interaction: place / drag / remove tools -----------------------------
   let selected: string | null = null;      // palette type queued for placement
-  let dragging: ToolInstance | null = null;
+  let dragging: ToolInstance | null = null; // existing tool being moved
+  let aiming: ToolInstance | null = null;   // freshly placed tool being aimed by drag
+  let aimPt = { x: 0, y: 0 };
   const hit = (x: number, y: number) => tools.find(t => !t.fixed && Math.hypot(t.x - x, t.y - y) < 22);
 
   canvas.addEventListener('pointerdown', e => {
@@ -141,16 +143,23 @@ export function initGame(): void {
     if (selected) {
       const placed = tools.filter(t => t.type === selected).length;
       const limit = level.palette.find(pl => pl.type === selected)!.limit;
-      if (placed < limit) { tools.push(mkTool(selected, p.x, p.y)); syncPalette(); }
+      if (placed < limit) { const t = mkTool(selected, p.x, p.y); tools.push(t); aiming = t; aimPt = p; syncPalette(); }
     }
   });
   window.addEventListener('pointermove', e => {
-    if (!dragging) return;
     const p = toLocal(e);
-    dragging.x = Math.max(0, Math.min(W, p.x));
-    dragging.y = Math.max(0, Math.min(H, p.y));
+    if (aiming) {
+      aimPt = p;
+      const dx = p.x - aiming.x, dy = p.y - aiming.y;
+      if (Math.hypot(dx, dy) > 10) TOOL_TYPES[aiming.type].aim?.(aiming, dx, dy); // drag past deadzone = aim
+      return;
+    }
+    if (dragging) {
+      dragging.x = Math.max(0, Math.min(W, p.x));
+      dragging.y = Math.max(0, Math.min(H, p.y));
+    }
   });
-  window.addEventListener('pointerup', () => { dragging = null; });
+  window.addEventListener('pointerup', () => { dragging = null; aiming = null; });
   canvas.addEventListener('dblclick', e => {
     const p = toLocal(e);
     const t = hit(p.x, p.y);
@@ -239,8 +248,15 @@ export function initGame(): void {
       ctx.restore();
     }
 
-    // tools
-    for (const t of tools) TOOL_TYPES[t.type].draw(ctx, t, false);
+    // tools (highlight the one being placed/moved)
+    for (const t of tools) TOOL_TYPES[t.type].draw(ctx, t, t === aiming || t === dragging);
+    // live aim guide while placing
+    if (aiming) {
+      ctx.save();
+      ctx.strokeStyle = aiming.color; ctx.globalAlpha = 0.55; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(aiming.x, aiming.y); ctx.lineTo(aimPt.x, aimPt.y); ctx.stroke();
+      ctx.restore();
+    }
 
     // bonds
     ctx.strokeStyle = 'rgba(190,210,214,0.5)'; ctx.lineWidth = 1.5;
@@ -269,6 +285,7 @@ export function initGame(): void {
     place: (type: string, xf: number, yf: number) => { tools.push(mkTool(type, xf * W, yf * H)); syncPalette(); },
     clear: () => { tools = tools.filter(t => t.fixed); syncPalette(); },
     report: () => analyzeMolecules(sim.bonds).molecules,
+    tools: () => tools.map(t => ({ type: t.type, angle: +t.angle.toFixed(2), strength: +t.strength.toFixed(2), radius: Math.round(t.radius) })),
     inTank: () => sim.atoms.filter(a => zones.some(z => a.x >= z.px && a.x <= z.px + z.pw && a.y >= z.py && a.y <= z.py + z.ph)).length,
     hist: () => { const b = new Array(10).fill(0); for (const a of sim.atoms) b[Math.min(9, Math.max(0, Math.floor(a.x / W * 10)))]++; return b; },
     state: () => ({ collected, won, atoms: sim.atoms.length, bonds: sim.bonds.length, tools: tools.length, elapsed: Math.round(elapsed) }),
@@ -297,7 +314,7 @@ function buildHUD(level: LevelDef): HUD {
       <div class="g-obj">Collect <b>${level.objective.count}</b> ${objLabel(level)} · <span id="gProg">0 / ${level.objective.count}</span> · <span id="gTime">0s</span></div>
     </div>
     <div id="gBottom">
-      <div class="g-hint">tap a tool, tap to place · drag to move · double-tap to remove</div>
+      <div class="g-hint">tap a tool · press &amp; drag to place + aim · drag to move · double-tap to remove</div>
       <div class="g-row">
         ${palette}
         <button class="pl-btn ghost" id="gReset">Reset</button>

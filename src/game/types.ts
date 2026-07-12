@@ -28,6 +28,9 @@ export interface ToolType {
   force?(t: ToolInstance, a: Atom, dt: number): void;
   // multiplier on bond-formation probability at a point (catalysts). Optional; default 1.
   formBoost?(t: ToolInstance, x: number, y: number): number;
+  // set params from a press-drag vector (dx,dy = pointer − tool centre): direction and/or
+  // intensity. Optional — tools without it just place on tap.
+  aim?(t: ToolInstance, dx: number, dy: number): void;
   // draw the tool at its canvas position.
   draw(ctx: CanvasRenderingContext2D, t: ToolInstance, selected: boolean): void;
 }

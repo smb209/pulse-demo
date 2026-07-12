@@ -2,6 +2,10 @@
 
 import type { ToolType, LevelDef } from './types';
 
+// max press-drag distance (logical px) that maps to full intensity
+const AIM_RANGE = 150;
+const aimFrac = (dx: number, dy: number) => Math.min(Math.hypot(dx, dy), AIM_RANGE) / AIM_RANGE;
+
 // --- tools -------------------------------------------------------------------
 // Each tool is pure behaviour + a draw call. `force` pushes atoms; `formBoost`
 // multiplies bond-formation probability. Add a key here and it's instantly placeable
@@ -20,6 +24,7 @@ export const TOOL_TYPES: Record<string, ToolType> = {
       const f = t.strength * dt / Math.sqrt(a.el.mass / 16);
       a.vx += Math.cos(t.angle) * f; a.vy += Math.sin(t.angle) * f;
     },
+    aim(t, dx, dy) { t.angle = Math.atan2(dy, dx); t.strength = 0.12 + aimFrac(dx, dy) * 0.5; },
     draw(ctx, t, selected) {
       ctx.save();
       ctx.strokeStyle = t.color;
@@ -28,7 +33,7 @@ export const TOOL_TYPES: Record<string, ToolType> = {
       ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
       ctx.globalAlpha = 0.95; ctx.lineWidth = 3;
-      const a = t.angle, L = 18, hx = t.x + Math.cos(a) * L, hy = t.y + Math.sin(a) * L;
+      const a = t.angle, L = 14 + t.strength * 52, hx = t.x + Math.cos(a) * L, hy = t.y + Math.sin(a) * L;
       ctx.beginPath();
       ctx.moveTo(t.x - Math.cos(a) * L, t.y - Math.sin(a) * L); ctx.lineTo(hx, hy);
       ctx.moveTo(hx, hy); ctx.lineTo(hx - Math.cos(a - 0.5) * 9, hy - Math.sin(a - 0.5) * 9);
@@ -52,6 +57,7 @@ export const TOOL_TYPES: Record<string, ToolType> = {
       const f = (1 - d / t.radius) * t.strength * dt / Math.sqrt(a.el.mass / 16);
       a.vx += (dx / d) * f; a.vy += (dy / d) * f;
     },
+    aim(t, dx, dy) { t.strength = 0.5 + aimFrac(dx, dy) * 1.7; }, // drag = repulsion intensity
     draw(ctx, t, selected) {
       ctx.save();
       ctx.strokeStyle = t.color;
@@ -76,6 +82,7 @@ export const TOOL_TYPES: Record<string, ToolType> = {
       const dx = x - t.x, dy = y - t.y;
       return (dx * dx + dy * dy <= t.radius * t.radius) ? t.strength : 1;
     },
+    aim(t, dx, dy) { t.radius = 44 + aimFrac(dx, dy) * 106; }, // drag = field size
     draw(ctx, t, selected) {
       ctx.save();
       const g = ctx.createRadialGradient(t.x, t.y, 4, t.x, t.y, t.radius);
