@@ -94,6 +94,7 @@ export function initGame(): void {
     force(a, dt) { for (const t of tools) TOOL_TYPES[t.type].force?.(t, a, dt); },
     formBoost(x, y, sa, sb) { let m = 1; for (const t of tools) { const b = TOOL_TYPES[t.type].formBoost?.(t, x, y, sa, sb); if (b !== undefined) m *= b; } return m; },
     breakBoost(x, y) { let m = 1; for (const t of tools) { const b = TOOL_TYPES[t.type].breakBoost?.(t, x, y); if (b !== undefined) m *= b; } return m; },
+    heatAt(x, y) { let h = 0; for (const t of tools) { const v = TOOL_TYPES[t.type].heatAt?.(t, x, y); if (v) h += v; } return h; },
   });
 
   // --- game state (setup → run → done) --------------------------------------

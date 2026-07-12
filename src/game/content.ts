@@ -117,15 +117,21 @@ export const TOOL_TYPES: Record<string, ToolType> = {
 
   heater: {
     id: 'heater', name: 'Heater', color: '#EE5A2B',
-    blurb: 'Adds heat — energises collisions and cracks weak bonds.',
-    defaults: { radius: 82, strength: 0.85 },
-    force(t, a, dt) {
-      const dx = a.x - t.x, dy = a.y - t.y;
-      if (dx * dx + dy * dy > t.radius * t.radius) return;
-      const j = t.strength * dt / Math.sqrt(a.el.mass / 16);
-      a.vx += (Math.random() - 0.5) * 2 * j; a.vy += (Math.random() - 0.5) * 2 * j;
+    blurb: 'Warms the reaction so pairs clear their activation energy, and loosens H₂/O₂ so they can recombine into water. No push — just heat.',
+    defaults: { radius: 104, strength: 0.55 }, // strength scales heat + bond-loosening
+    // Heat does three real things: it warms the reaction (clears activation), loosens weak
+    // bonds (H₂/O₂ crack so atoms can recombine as water), and stirs the gas (convection) so
+    // the reactants actually mix. The stir is kept gentle so it warms rather than flinging
+    // atoms out like a deflector.
+    heatAt(t, x, y) {
+      const dx = x - t.x, dy = y - t.y;
+      return (dx * dx + dy * dy <= t.radius * t.radius) ? t.strength * 130 : 0;
     },
-    aim(t, dx, dy) { t.strength = 0.3 + aimFrac(dx, dy) * 1.5; },
+    breakBoost(t, x, y) {
+      const dx = x - t.x, dy = y - t.y;
+      return (dx * dx + dy * dy <= t.radius * t.radius) ? 1 + t.strength * 10 : 1;
+    },
+    aim(t, dx, dy) { t.strength = 0.3 + aimFrac(dx, dy) * 0.7; },
     draw(ctx, t, selected) { glowRing(ctx, t, '238,90,43', selected); },
   },
 
@@ -245,9 +251,9 @@ export const LEVELS: LevelDef[] = [
     temperature: 22,
     collisions: false,
     emitters: [
-      { element: 'H', x: 0.05, y: 0.34, angle: 0.30, mols: 54, rate: 20, speed: 1.9, spread: 0.1, aimable: true },
-      { element: 'H', x: 0.05, y: 0.66, angle: -0.30, mols: 54, rate: 20, speed: 1.9, spread: 0.1, aimable: true },
-      { element: 'O', x: 0.05, y: 0.50, angle: 0, mols: 54, rate: 20, speed: 1.7, spread: 0.1, aimable: true },
+      { element: 'H', x: 0.06, y: 0.46, angle: 0, mols: 40, rate: 18, speed: 1.6, spread: 0.34, aimable: true },
+      { element: 'O', x: 0.06, y: 0.50, angle: 0, mols: 40, rate: 18, speed: 1.6, spread: 0.34, aimable: true },
+      { element: 'H', x: 0.06, y: 0.54, angle: 0, mols: 40, rate: 18, speed: 1.6, spread: 0.34, aimable: true },
     ],
     // the reaction chamber is the collector — any water made in it counts (kept wide enough
     // on the left to cover the mixing zone, but lowered so it clears the HUD text)

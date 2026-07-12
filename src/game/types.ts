@@ -31,6 +31,8 @@ export interface ToolType {
   formBoost?(t: ToolInstance, x: number, y: number, symA: string, symB: string): number;
   // multiplier on bond-break probability at a point (shredders, hot zones). Optional; default 1.
   breakBoost?(t: ToolInstance, x: number, y: number): number;
+  // extra reaction energy (kJ/mol) added to a pair's approach energy at a point (heaters).
+  heatAt?(t: ToolInstance, x: number, y: number): number;
   // per-frame chance (0..1) to adsorb/remove an atom inside the tool (contaminant getters).
   adsorb?(t: ToolInstance, x: number, y: number): number;
   // set params from a press-drag vector (dx,dy = pointer − tool centre): direction and/or

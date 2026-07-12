@@ -177,6 +177,10 @@ export interface SimEnvironment {
   formBoost?(x: number, y: number, symA: string, symB: string): number;
   // multiplier on P(break) at a bond's midpoint (shredders / hot zones)
   breakBoost?(x: number, y: number): number;
+  // extra reaction energy (kJ/mol) at a point — raises the effective approach energy so a
+  // pair can clear activation, without adding kinetic velocity (a heater warms the chemistry,
+  // not the motion, so it doesn't fling atoms around like a force does)
+  heatAt?(x: number, y: number): number;
 }
 
 export type Sim = ReturnType<typeof createSim>;
@@ -262,12 +266,13 @@ export function createSim({ width, height, sampleElement, cap = 250, temperature
     const until = cooldowns.get(coolKey(a, b));
     if (until !== undefined && frame < until) return;
     if (a.bonds.some(bd => bd.a === b || bd.b === b)) return; // already bonded
-    const e = eRel(a, b);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const e = eRel(a, b) + (environment?.heatAt ? environment.heatAt(mx, my) : 0); // heaters warm the reaction
     const order = Math.min(maxBondOrder(a.el, b.el), capLeft(a), capLeft(b));
     const eBond = bondEnergy(a.el, b.el, order);
     let p = bondFormProbability(a.el, b.el, e, bondLoad(a), bondLoad(b), a.charge, b.charge)
       * captureFactor(e, eBond) * FORM_RATE;
-    if (environment?.formBoost) p *= environment.formBoost((a.x + b.x) / 2, (a.y + b.y) / 2, a.el.symbol, b.el.symbol); // catalysts
+    if (environment?.formBoost) p *= environment.formBoost(mx, my, a.el.symbol, b.el.symbol); // catalysts
     if (p > 0 && rng() < p) {
       const bd: Bond = { a, b, order, key: pairKey(a.el, b.el) };
       bonds.push(bd);
