@@ -52,19 +52,20 @@ export function initGame(): void {
   layout();
   function fit(): void {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    // On short (phone-landscape) screens, reserve room for the HUD bars so the board stays
-    // fully visible between them instead of hiding behind the palette.
-    const short = window.innerHeight < 560;
-    const rTop = short ? 48 : 0, rBot = short ? 92 : 0;
-    const availH = Math.max(140, window.innerHeight - rTop - rBot);
-    const scale = Math.min(window.innerWidth / W, availH / H);
+    // Fill the actual visible viewport (visualViewport accounts for the mobile browser
+    // chrome). The compact HUD hugs the corners, and level content lives in the corners
+    // (tank, emitters) so the centred title/palette don't occlude it.
+    const vw = window.visualViewport?.width ?? window.innerWidth;
+    const vh = window.visualViewport?.height ?? window.innerHeight;
+    const scale = Math.min(vw / W, vh / H);
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.position = 'fixed'; canvas.style.inset = 'auto';
-    canvas.style.left = '50%'; canvas.style.top = (rTop + availH / 2) + 'px';
+    canvas.style.left = '50%'; canvas.style.top = '50%';
     canvas.style.transform = 'translate(-50%, -50%)';
     canvas.style.width = (W * scale) + 'px'; canvas.style.height = (H * scale) + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+  window.visualViewport?.addEventListener('resize', fit);
   window.addEventListener('resize', fit);
   fit();
   const toLocal = (e: { clientX: number; clientY: number }) => {
@@ -518,19 +519,25 @@ function injectStyles(): void {
         color: var(--text-muted); font-size: 1rem; letter-spacing: 0.02em; }
       #gRotate .rot-icon { font-size: 3.2rem; color: var(--primary); }
     }
-    /* short (phone-landscape) screens: compact the HUD so the board breathes */
-    @media (max-height: 560px) {
-      #gTop { top: 6px; }
+    /* short (phone-landscape) screens: the board fills the height, so the HUD must be tiny
+       and hug the corners — title/palette stay centred, level content lives in the corners */
+    @media (max-height: 480px) {
+      #gTop { top: 3px; }
       #gTop .g-blurb, #gBottom .g-hint { display: none; }
-      #gTop .g-title { font-size: 0.9rem; }
-      #gTop .g-rxn, #gTop .g-obj { font-size: 0.72rem; margin-top: 1px; }
-      #gCond { top: 6px; left: 6px; gap: 4px; }
-      #gCond .cond { padding: 3px 7px; }
-      #gCond .cond b { font-size: 0.74rem; }
-      #gBottom { bottom: 6px; gap: 5px; width: min(720px, calc(100vw - 12px)); }
-      #gBottom .pl-btn { padding: 6px 11px; font-size: 0.72rem; }
-      #gWin .g-card { padding: 18px 22px; gap: 8px; }
-      #gStars { font-size: 1.6rem; }
+      #gTop .g-title { font-size: 0.82rem; }
+      #gTop .g-rxn, #gTop .g-obj { font-size: 0.68rem; margin-top: 0; }
+      #gCond { top: 3px; left: 3px; gap: 3px; }
+      #gCond .cond { padding: 2px 6px; }
+      #gCond .cond b { font-size: 0.7rem; }
+      #gCond .cond span { font-size: 0.5rem; }
+      /* one tight wrapping strip of buttons at the very bottom */
+      #gBottom { bottom: 4px; gap: 3px; width: min(760px, calc(100vw - 8px)); }
+      #gBottom .g-row { gap: 5px; }
+      #gBottom .pl-btn { padding: 5px 9px; font-size: 0.66rem; gap: 5px; }
+      #gBottom .pl-dot { width: 8px; height: 8px; }
+      #gWin .g-card { padding: 14px 20px; gap: 7px; width: min(400px, calc(100vw - 24px)); }
+      #gStars { font-size: 1.5rem; }
+      #gFact { padding-top: 8px; font-size: 0.72rem; }
     }
   `;
   document.head.appendChild(s);
