@@ -52,10 +52,15 @@ export function initGame(): void {
   layout();
   function fit(): void {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+    // On short (phone-landscape) screens, reserve room for the HUD bars so the board stays
+    // fully visible between them instead of hiding behind the palette.
+    const short = window.innerHeight < 560;
+    const rTop = short ? 48 : 0, rBot = short ? 92 : 0;
+    const availH = Math.max(140, window.innerHeight - rTop - rBot);
+    const scale = Math.min(window.innerWidth / W, availH / H);
     canvas.width = W * dpr; canvas.height = H * dpr;
     canvas.style.position = 'fixed'; canvas.style.inset = 'auto';
-    canvas.style.left = '50%'; canvas.style.top = '50%';
+    canvas.style.left = '50%'; canvas.style.top = (rTop + availH / 2) + 'px';
     canvas.style.transform = 'translate(-50%, -50%)';
     canvas.style.width = (W * scale) + 'px'; canvas.style.height = (H * scale) + 'px';
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -432,7 +437,8 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean): HUD {
           <a class="pl-btn ghost" href="${location.pathname}">Sandbox</a>
         </div>
       </div>
-    </div>`;
+    </div>
+    <div id="gRotate"><div class="rot-icon">⟳</div><div>Rotate your device to landscape to play</div></div>`;
   document.body.appendChild(root);
   return {
     paletteBtns: [...root.querySelectorAll<HTMLButtonElement>('.pl-btn[data-type]')],
@@ -504,6 +510,28 @@ function injectStyles(): void {
     #gWinMeta { font-size: 0.85rem; color: var(--text-muted); }
     #gFact { font-size: 0.78rem; color: var(--text-muted); line-height: 1.45; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 2px; }
     #gWin .g-card-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+    /* portrait phones: this board is landscape-shaped — ask to rotate */
+    #gRotate { display: none; }
+    @media (orientation: portrait) and (max-width: 680px) {
+      #gRotate { display: flex; position: fixed; inset: 0; z-index: 30; background: var(--bg); pointer-events: auto;
+        flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 30px; text-align: center;
+        color: var(--text-muted); font-size: 1rem; letter-spacing: 0.02em; }
+      #gRotate .rot-icon { font-size: 3.2rem; color: var(--primary); }
+    }
+    /* short (phone-landscape) screens: compact the HUD so the board breathes */
+    @media (max-height: 560px) {
+      #gTop { top: 6px; }
+      #gTop .g-blurb, #gBottom .g-hint { display: none; }
+      #gTop .g-title { font-size: 0.9rem; }
+      #gTop .g-rxn, #gTop .g-obj { font-size: 0.72rem; margin-top: 1px; }
+      #gCond { top: 6px; left: 6px; gap: 4px; }
+      #gCond .cond { padding: 3px 7px; }
+      #gCond .cond b { font-size: 0.74rem; }
+      #gBottom { bottom: 6px; gap: 5px; width: min(720px, calc(100vw - 12px)); }
+      #gBottom .pl-btn { padding: 6px 11px; font-size: 0.72rem; }
+      #gWin .g-card { padding: 18px 22px; gap: 8px; }
+      #gStars { font-size: 1.6rem; }
+    }
   `;
   document.head.appendChild(s);
 }
