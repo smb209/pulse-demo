@@ -10,6 +10,7 @@ import {
   makeEmptyLevel, saveOne, loadAll, deleteOne, getOne, validateLevel,
   DRAFT_KEY, TEST_KEY,
 } from './levelStore';
+import { wireFullscreen } from '../fullscreen';
 import type { LevelDef, PlacedToolDef, ToolInstance } from './types';
 
 type Sel = { kind: 'tool' | 'emitter' | 'zone'; i: number } | null;
@@ -200,6 +201,7 @@ export function initEditor(): void {
   (root.querySelector('#edLoad') as HTMLElement).addEventListener('click', openLoad);
   (root.querySelector('#edExport') as HTMLElement).addEventListener('click', openExport);
   (root.querySelector('#edImport') as HTMLElement).addEventListener('click', openImport);
+  wireFullscreen(root.querySelector('#edFull') as HTMLElement, '⛶ Full screen', '⤢ Exit full screen');
 
   // --- inspector / settings panel ------------------------------------------
   panel.addEventListener('input', onPanelChange);
@@ -546,6 +548,7 @@ function uiHTML(): string {
         <button class="pl-btn sm ghost" id="edExport">Export</button>
         <button class="pl-btn sm ghost" id="edImport">Import</button>
         <button class="pl-btn sm ghost" id="edNew">New</button>
+        <button class="pl-btn sm ghost" id="edFull" title="Toggle full screen (hides the browser bar)">⛶ Full screen</button>
         <a class="pl-btn sm ghost" href="${location.pathname}?game=1&level=1">Play campaign</a>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { BY_SYMBOL } from '../elements';
 import { formulaOf, analyzeMolecules } from '../chemistry';
 import { TOOL_TYPES, LEVELS } from './content';
 import { getOne, TEST_KEY } from './levelStore';
+import { wireFullscreen } from '../fullscreen';
 import type { LevelDef, ToolInstance } from './types';
 
 const SUBS = '₀₁₂₃₄₅₆₇₈₉';
@@ -258,6 +259,8 @@ export function initGame(): void {
   for (const btn of hud.paletteBtns) {
     btn.addEventListener('click', () => { if (phase !== 'setup') return; selected = selected === btn.dataset.type ? null : btn.dataset.type!; syncPalette(); });
   }
+  const fullBtn = document.getElementById('gFull');
+  if (fullBtn) wireFullscreen(fullBtn, '⛶', '⤢');
   hud.startBtn.addEventListener('click', startRun);
   hud.resetBtn.addEventListener('click', reset);
   hud.clearBtn.addEventListener('click', clearBoard);
@@ -439,6 +442,7 @@ function buildHUD(level: LevelDef, levelIdx: number, hasNext: boolean, backHref:
     <div id="gCond">
       <div class="cond"><span>Temp</span><b id="gTemp">${level.temperature}°</b></div>
       <div class="cond"><span>Press</span><b id="gPres">—</b></div>
+      <button class="cond cond-btn" id="gFull" title="Toggle full screen (hides the browser bar)">⛶</button>
     </div>
     <div id="gTop">
       <div class="g-title">${level.name}${level.featured ? ` <span class="g-el">${level.featured}</span>` : ''}</div>
@@ -506,6 +510,8 @@ function injectStyles(): void {
     #gCond .cond { display: flex; align-items: baseline; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
     #gCond .cond span { font-size: 0.56rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
     #gCond .cond b { font-size: 0.82rem; color: var(--primary); font-variant-numeric: tabular-nums; font-weight: 600; }
+    #gCond .cond-btn { cursor: pointer; color: var(--primary); font-size: 1rem; line-height: 1; padding: 6px 10px; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; }
+    #gCond .cond-btn:active { transform: scale(0.92); }
     #gTop { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); text-align: center; user-select: none; }
     #gTop .g-title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
       background: linear-gradient(100deg, var(--primary), var(--secondary), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
